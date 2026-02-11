@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+smart_farm_env/
+logs/
+*.log
+.vscode/
+.DS_Store
