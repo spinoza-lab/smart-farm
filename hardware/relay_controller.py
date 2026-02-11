@@ -4,7 +4,7 @@ relay_controller.py
 릴레이 제어 클래스
 """
 
-from gpio_expander import GPIOExpander
+from hardware.gpio_expander import GPIOExpander
 import time
 
 

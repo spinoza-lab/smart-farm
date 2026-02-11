@@ -1,0 +1,155 @@
+[
+  {
+    "id": 1,
+    "zone_id": 2,
+    "start_time": "06:00",
+    "duration": 600,
+    "days": [
+      1,
+      3,
+      5
+    ],
+    "enabled": true,
+    "created_at": "2026-02-11T11:58:42.596396"
+  },
+  {
+    "id": 2,
+    "zone_id": 1,
+    "start_time": "06:00",
+    "duration": 600,
+    "days": [],
+    "enabled": true,
+    "created_at": "2026-02-11T13:18:25.392375"
+  },
+  {
+    "id": 3,
+    "zone_id": 1,
+    "start_time": "18:00",
+    "duration": 900,
+    "days": [
+      1,
+      3,
+      5
+    ],
+    "enabled": true,
+    "created_at": "2026-02-11T13:18:25.394143"
+  },
+  {
+    "id": 4,
+    "zone_id": 2,
+    "start_time": "07:00",
+    "duration": 720,
+    "days": [
+      2,
+      4,
+      6
+    ],
+    "enabled": true,
+    "created_at": "2026-02-11T13:18:25.413955"
+  },
+  {
+    "id": 5,
+    "zone_id": 1,
+    "start_time": "06:00",
+    "duration": 600,
+    "days": [],
+    "enabled": true,
+    "created_at": "2026-02-11T13:19:45.299509"
+  },
+  {
+    "id": 6,
+    "zone_id": 1,
+    "start_time": "18:00",
+    "duration": 900,
+    "days": [
+      1,
+      3,
+      5
+    ],
+    "enabled": true,
+    "created_at": "2026-02-11T13:19:45.301817"
+  },
+  {
+    "id": 7,
+    "zone_id": 2,
+    "start_time": "07:00",
+    "duration": 720,
+    "days": [
+      2,
+      4,
+      6
+    ],
+    "enabled": true,
+    "created_at": "2026-02-11T13:19:45.304310"
+  },
+  {
+    "id": 8,
+    "zone_id": 1,
+    "start_time": "06:00",
+    "duration": 600,
+    "days": [],
+    "enabled": true,
+    "created_at": "2026-02-11T13:24:07.683992"
+  },
+  {
+    "id": 9,
+    "zone_id": 1,
+    "start_time": "18:00",
+    "duration": 900,
+    "days": [
+      1,
+      3,
+      5
+    ],
+    "enabled": true,
+    "created_at": "2026-02-11T13:24:07.686208"
+  },
+  {
+    "id": 10,
+    "zone_id": 2,
+    "start_time": "07:00",
+    "duration": 720,
+    "days": [
+      2,
+      4,
+      6
+    ],
+    "enabled": true,
+    "created_at": "2026-02-11T13:24:07.689710"
+  },
+  {
+    "id": 11,
+    "zone_id": 1,
+    "start_time": "06:00",
+    "duration": 600,
+    "days": [],
+    "enabled": true,
+    "created_at": "2026-02-11T13:27:06.626551"
+  },
+  {
+    "id": 12,
+    "zone_id": 1,
+    "start_time": "18:00",
+    "duration": 900,
+    "days": [
+      1,
+      3,
+      5
+    ],
+    "enabled": false,
+    "created_at": "2026-02-11T13:27:06.628208"
+  },
+  {
+    "id": 13,
+    "zone_id": 2,
+    "start_time": "07:00",
+    "duration": 720,
+    "days": [
+      2,
+      4,
+      6
+    ],
+    "enabled": true,
+    "created_at": "2026-02-11T13:27:06.636293"
+  }
+]

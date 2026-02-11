@@ -1,0 +1,22 @@
+{
+  "zones": [
+    {
+      "id": 1,
+      "name": "구역 1",
+      "valve": 1,
+      "pump": 1,
+      "main_valve": 1,
+      "sensor_channel": 0,
+      "enabled": true
+    },
+    {
+      "id": 2,
+      "name": "토마토 구역",
+      "valve": 1,
+      "pump": 1,
+      "main_valve": 1,
+      "sensor_channel": 0,
+      "enabled": true
+    }
+  ]
+}

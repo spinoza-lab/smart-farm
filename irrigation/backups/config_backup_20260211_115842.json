@@ -1,0 +1,59 @@
+{
+  "timestamp": "20260211_115842",
+  "schedules": {
+    "schedules": [
+      {
+        "id": 1,
+        "zone_id": 2,
+        "start_time": "06:00",
+        "duration": 600,
+        "days": [
+          1,
+          3,
+          5
+        ],
+        "enabled": true,
+        "created_at": "2026-02-11T11:58:42.596396"
+      }
+    ]
+  },
+  "zones": {
+    "zones": [
+      {
+        "id": 1,
+        "name": "구역 1",
+        "valve": 1,
+        "pump": 1,
+        "main_valve": 1,
+        "sensor_channel": 0,
+        "enabled": true
+      },
+      {
+        "id": 2,
+        "name": "토마토 구역",
+        "valve": 1,
+        "pump": 1,
+        "main_valve": 1,
+        "sensor_channel": 0,
+        "enabled": true
+      }
+    ]
+  },
+  "settings": {
+    "system": {
+      "default_duration": 600,
+      "safety_timeout": 1800,
+      "min_water_level": 20,
+      "enable_sensor_check": true,
+      "log_level": "INFO"
+    },
+    "hardware": {
+      "mcp23017_addresses": [
+        32,
+        33
+      ],
+      "ads1115_address": 72,
+      "rtc_address": 104
+    }
+  }
+}

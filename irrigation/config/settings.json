@@ -1,0 +1,17 @@
+{
+  "system": {
+    "default_duration": 600,
+    "safety_timeout": 1800,
+    "min_water_level": 20,
+    "enable_sensor_check": false,
+    "log_level": "INFO"
+  },
+  "hardware": {
+    "mcp23017_addresses": [
+      32,
+      33
+    ],
+    "ads1115_address": 72,
+    "rtc_address": 104
+  }
+}
