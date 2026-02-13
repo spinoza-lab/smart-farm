@@ -1,0 +1,351 @@
+// 스마트 관수 시스템 - 대시보드 JavaScript
+
+// Socket.IO 연결
+const socket = io();
+
+// 차트 객체
+let waterChart = null;
+
+// 차트 데이터
+let chartData = {
+    labels: [],
+    tank1: [],
+    tank2: []
+};
+
+// ============================================================
+// Socket.IO 이벤트
+// ============================================================
+
+socket.on('connect', () => {
+    console.log('✅ 서버 연결됨');
+    updateConnectionStatus(true);
+});
+
+socket.on('disconnect', () => {
+    console.log('❌ 서버 연결 끊김');
+    updateConnectionStatus(false);
+});
+
+socket.on('connected', (data) => {
+    console.log('📡', data.message);
+});
+
+socket.on('sensor_update', (data) => {
+    console.log('📊 센서 데이터 수신:', data);
+    updateSensorData(data);
+    updateChart(data);
+});
+
+socket.on('new_alert', (alert) => {
+    console.log('🚨 새 경고:', alert);
+    addAlertToList(alert);
+    updateAlertCount();
+});
+
+// ============================================================
+// UI 업데이트 함수
+// ============================================================
+
+function updateConnectionStatus(connected) {
+    const statusBadge = document.getElementById('connection-status');
+    
+    if (connected) {
+        statusBadge.innerHTML = '<i class="fas fa-check-circle"></i> 연결됨';
+        statusBadge.className = 'badge connected';
+    } else {
+        statusBadge.innerHTML = '<i class="fas fa-times-circle"></i> 연결 끊김';
+        statusBadge.className = 'badge disconnected';
+    }
+}
+
+function updateSensorData(data) {
+    // 마지막 업데이트 시간
+    document.getElementById('last-update').textContent = data.timestamp;
+    
+    // 탱크 1 수위
+    const tank1Level = data.tank1_level;
+    updateWaterGauge('tank1', tank1Level);
+    
+    // 탱크 2 수위
+    const tank2Level = data.tank2_level;
+    updateWaterGauge('tank2', tank2Level);
+    
+    // 전압 데이터
+    document.getElementById('voltage-ch0').textContent = data.voltages[0].toFixed(3) + 'V';
+    document.getElementById('voltage-ch1').textContent = data.voltages[1].toFixed(3) + 'V';
+    document.getElementById('voltage-ch2').textContent = data.voltages[2].toFixed(3) + 'V';
+    document.getElementById('voltage-ch3').textContent = data.voltages[3].toFixed(3) + 'V';
+}
+
+function updateWaterGauge(tankId, level) {
+    const waterElement = document.getElementById(`${tankId}-water`);
+    const percentageElement = document.getElementById(`${tankId}-percentage`);
+    
+    // 수위 높이 설정
+    waterElement.style.height = level + '%';
+    
+    // 퍼센트 표시
+    percentageElement.textContent = level.toFixed(1) + '%';
+    
+    // 색상 변경 (낮음/높음)
+    waterElement.className = 'water-level';
+    if (level < 20) {
+        waterElement.classList.add('low');
+    } else if (level > 90) {
+        waterElement.classList.add('high');
+    }
+}
+
+function updateChart(data) {
+    const now = new Date(data.timestamp);
+    const timeLabel = now.toLocaleTimeString('ko-KR', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+    
+    // 데이터 추가
+    chartData.labels.push(timeLabel);
+    chartData.tank1.push(data.tank1_level);
+    chartData.tank2.push(data.tank2_level);
+    
+    // 최근 20개만 유지
+    if (chartData.labels.length > 20) {
+        chartData.labels.shift();
+        chartData.tank1.shift();
+        chartData.tank2.shift();
+    }
+    
+    // 차트 업데이트
+    if (waterChart) {
+        waterChart.data.labels = chartData.labels;
+        waterChart.data.datasets[0].data = chartData.tank1;
+        waterChart.data.datasets[1].data = chartData.tank2;
+        waterChart.update();
+    }
+}
+
+function addAlertToList(alert) {
+    const alertList = document.getElementById('alert-list');
+    
+    // 첫 경고인 경우 "경고 없음" 메시지 제거
+    if (alertList.children[0]?.classList.contains('text-muted')) {
+        alertList.innerHTML = '';
+    }
+    
+    // 경고 레벨에 따른 아이콘 및 클래스
+    let icon, levelClass;
+    switch (alert.level) {
+        case 'CRITICAL':
+            icon = 'fas fa-exclamation-circle text-danger';
+            levelClass = 'critical';
+            break;
+        case 'WARNING':
+            icon = 'fas fa-exclamation-triangle text-warning';
+            levelClass = 'warning';
+            break;
+        case 'INFO':
+            icon = 'fas fa-info-circle text-info';
+            levelClass = 'info';
+            break;
+        default:
+            icon = 'fas fa-bell';
+            levelClass = '';
+    }
+    
+    // 경고 아이템 생성
+    const alertItem = document.createElement('div');
+    alertItem.className = `alert-item ${levelClass}`;
+    alertItem.innerHTML = `
+        <div class="d-flex align-items-start">
+            <i class="${icon} alert-icon"></i>
+            <div class="flex-grow-1">
+                <div class="alert-message">${alert.message}</div>
+                <div class="alert-time">${alert.timestamp}</div>
+            </div>
+        </div>
+    `;
+    
+    // 목록 맨 위에 추가
+    alertList.insertBefore(alertItem, alertList.firstChild);
+    
+    // 최대 10개까지만 표시
+    while (alertList.children.length > 10) {
+        alertList.removeChild(alertList.lastChild);
+    }
+}
+
+// ============================================================
+// API 호출 함수
+// ============================================================
+
+async function startMonitoring() {
+    try {
+        const response = await fetch('/api/start_monitoring', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            console.log('✅ 모니터링 시작:', data.message);
+            document.getElementById('monitoring-status').textContent = '실행 중';
+            document.getElementById('monitoring-status').className = 'badge bg-success';
+            
+            // 버튼 전환
+            document.getElementById('btn-start-monitoring').classList.add('d-none');
+            document.getElementById('btn-stop-monitoring').classList.remove('d-none');
+        } else {
+            console.error('❌ 모니터링 시작 실패:', data.error);
+            alert('모니터링 시작 실패: ' + data.error);
+        }
+    } catch (error) {
+        console.error('❌ 오류:', error);
+        alert('오류 발생: ' + error.message);
+    }
+}
+
+async function stopMonitoring() {
+    try {
+        const response = await fetch('/api/stop_monitoring', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            console.log('⏹️  모니터링 중지:', data.message);
+            document.getElementById('monitoring-status').textContent = '중지됨';
+            document.getElementById('monitoring-status').className = 'badge bg-secondary';
+            
+            // 버튼 전환
+            document.getElementById('btn-start-monitoring').classList.remove('d-none');
+            document.getElementById('btn-stop-monitoring').classList.add('d-none');
+        } else {
+            console.error('❌ 모니터링 중지 실패:', data.error);
+            alert('모니터링 중지 실패: ' + data.error);
+        }
+    } catch (error) {
+        console.error('❌ 오류:', error);
+        alert('오류 발생: ' + error.message);
+    }
+}
+
+async function loadAlerts() {
+    try {
+        const response = await fetch('/api/alerts?limit=10');
+        const data = await response.json();
+        
+        if (response.ok) {
+            const alertList = document.getElementById('alert-list');
+            alertList.innerHTML = '';
+            
+            if (data.alerts.length === 0) {
+                alertList.innerHTML = '<div class="text-center text-muted p-3">경고 없음</div>';
+            } else {
+                data.alerts.forEach(alert => addAlertToList(alert));
+            }
+        }
+    } catch (error) {
+        console.error('❌ 경고 목록 로드 실패:', error);
+    }
+}
+
+async function updateAlertCount() {
+    try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        
+        if (response.ok) {
+            document.getElementById('alert-count-24h').textContent = data.alert_count_24h || 0;
+        }
+    } catch (error) {
+        console.error('❌ 상태 업데이트 실패:', error);
+    }
+}
+
+// ============================================================
+// 차트 초기화
+// ============================================================
+
+function initChart() {
+    const ctx = document.getElementById('water-chart').getContext('2d');
+    
+    waterChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: '탱크 1',
+                    data: [],
+                    borderColor: '#1976d2',
+                    backgroundColor: 'rgba(25, 118, 210, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                },
+                {
+                    label: '탱크 2',
+                    data: [],
+                    borderColor: '#0288d1',
+                    backgroundColor: 'rgba(2, 136, 209, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: '수위 (%)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: '시간'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// ============================================================
+// 이벤트 리스너
+// ============================================================
+
+document.getElementById('btn-start-monitoring').addEventListener('click', startMonitoring);
+document.getElementById('btn-stop-monitoring').addEventListener('click', stopMonitoring);
+
+// ============================================================
+// 초기화
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('🚀 대시보드 초기화');
+    
+    // 차트 초기화
+    initChart();
+    
+    // 경고 목록 로드
+    loadAlerts();
+    
+    // 경고 카운트 업데이트
+    updateAlertCount();
+    
+    // 10초마다 경고 카운트 업데이트
+    setInterval(updateAlertCount, 10000);
+});

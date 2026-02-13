@@ -1,0 +1,225 @@
+/* 스마트 관수 시스템 - 대시보드 스타일 */
+
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* 연결 상태 배지 */
+#connection-status {
+    font-size: 0.9rem;
+    padding: 0.5rem 1rem;
+}
+
+#connection-status.connected {
+    background-color: #28a745;
+}
+
+#connection-status.disconnected {
+    background-color: #dc3545;
+}
+
+/* 수위 게이지 */
+.water-gauge {
+    position: relative;
+    width: 200px;
+    height: 300px;
+    margin: 20px auto;
+    border: 3px solid #333;
+    border-radius: 10px;
+    background: linear-gradient(to bottom, #e3f2fd 0%, #bbdefb 100%);
+    overflow: hidden;
+}
+
+.water-level {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 0%;
+    background: linear-gradient(to top, 
+        #1976d2 0%, 
+        #42a5f5 50%, 
+        #64b5f6 100%
+    );
+    transition: height 0.5s ease;
+    box-shadow: 0 -5px 10px rgba(0, 0, 0, 0.1);
+}
+
+.water-level::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 0;
+    width: 100%;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    animation: wave 3s ease-in-out infinite;
+}
+
+@keyframes wave {
+    0%, 100% {
+        transform: translateX(0) translateY(0);
+    }
+    50% {
+        transform: translateX(-10px) translateY(-5px);
+    }
+}
+
+.water-percentage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #333;
+    text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.8);
+    z-index: 10;
+}
+
+/* 수위 경고 색상 */
+.water-level.low {
+    background: linear-gradient(to top, 
+        #d32f2f 0%, 
+        #f44336 50%, 
+        #e57373 100%
+    );
+}
+
+.water-level.high {
+    background: linear-gradient(to top, 
+        #388e3c 0%, 
+        #66bb6a 50%, 
+        #81c784 100%
+    );
+}
+
+/* 카드 스타일 */
+.card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: none;
+    margin-bottom: 1rem;
+}
+
+.card-header {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+/* 경고 목록 */
+.alert-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.alert-item {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #dee2e6;
+    transition: background-color 0.2s;
+}
+
+.alert-item:hover {
+    background-color: #f8f9fa;
+}
+
+.alert-item:last-child {
+    border-bottom: none;
+}
+
+.alert-item .alert-icon {
+    font-size: 1.2rem;
+    margin-right: 0.5rem;
+}
+
+.alert-item.critical {
+    border-left: 4px solid #dc3545;
+}
+
+.alert-item.warning {
+    border-left: 4px solid #ffc107;
+}
+
+.alert-item.info {
+    border-left: 4px solid #17a2b8;
+}
+
+.alert-time {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.alert-message {
+    font-size: 0.95rem;
+    color: #333;
+}
+
+/* 전압 표시 */
+#voltage-ch0, #voltage-ch1, #voltage-ch2, #voltage-ch3 {
+    font-family: 'Courier New', monospace;
+    margin: 0.5rem 0;
+}
+
+/* 차트 컨테이너 */
+#water-chart {
+    width: 100%;
+    height: 300px;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+    .water-gauge {
+        width: 150px;
+        height: 250px;
+    }
+    
+    .water-percentage {
+        font-size: 2rem;
+    }
+}
+
+/* 로딩 애니메이션 */
+.spinner {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* 버튼 호버 효과 */
+.btn {
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* 스크롤바 스타일 */
+.alert-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.alert-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.alert-list::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.alert-list::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}

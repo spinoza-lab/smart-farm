@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 sensor_monitor.py
-센서 실시간 모니터링
+센서 실시간 모니터링 (v3 - 캐시 기능 추가)
 - 주기적 센서 값 읽기 (균등 간격 다중 샘플링)
 - 이상치 제거 (상하위 각 2개)
 - 수위/임계값 체크
 - 이상 감지 및 알림
+- ✅ 마지막 측정값 캐시 (get_current_status 최적화)
 """
 
 import time
@@ -65,6 +66,10 @@ class SensorMonitor:
         # 센서 데이터 히스토리
         self.history = []
         self.max_history = 100  # 최대 100개 저장
+        
+        # ✅ 마지막 측정값 캐시 추가
+        self._last_data = None
+        self._last_data_lock = threading.Lock()
         
         # 마지막 알림 시간 (중복 방지)
         self.last_alert_time = {}
@@ -130,6 +135,10 @@ class SensorMonitor:
                 # 센서 데이터 수집 (다중 샘플링 + 이상치 제거)
                 data = self._collect_sensor_data()
                 
+                # ✅ 캐시에 저장
+                with self._last_data_lock:
+                    self._last_data = data
+                
                 # 히스토리에 추가
                 self._add_to_history(data)
                 
@@ -189,7 +198,7 @@ class SensorMonitor:
               f"CH2={filtered_voltages[2]:.3f}V CH3={filtered_voltages[3]:.3f}V")
         
         # 타임스탬프
-        timestamp = self.rtc.get_time_string()
+        timestamp = self.rtc.get_datetime_string('%Y-%m-%d %H:%M:%S')
         
         # 필터링된 전압으로 수위 계산
         # 임시로 sensor_reader를 사용해서 각 채널 읽기
@@ -285,7 +294,18 @@ class SensorMonitor:
               f"CH2: {voltages[2]:.3f}V | CH3: {voltages[3]:.3f}V")
     
     def get_current_status(self) -> Dict:
-        """현재 센서 상태 조회"""
+        """
+        현재 센서 상태 조회
+        
+        ✅ 캐시된 마지막 측정값을 반환 (새로 샘플링 안 함)
+        캐시가 없으면 즉시 1회 측정
+        """
+        with self._last_data_lock:
+            if self._last_data:
+                # 캐시된 값 반환 (샘플링 안 함)
+                return self._last_data.copy()
+        
+        # 캐시가 없으면 즉시 측정 (모니터링 시작 전)
         return self._collect_sensor_data()
     
     def get_history(self, limit: Optional[int] = None) -> List[Dict]:
@@ -348,75 +368,56 @@ def test_sensor_monitor():
     print("🧪 SensorMonitor 테스트")
     print("="*60)
     
-    # 알림 콜백 예제
-    def alert_callback(alert_type, message, data):
-        print(f"\n📢 콜백 실행:")
-        print(f"   타입: {alert_type}")
-        print(f"   메시지: {message}")
-        print(f"   탱크1: {data['tank1_level']:.1f}%")
-        print(f"   탱크2: {data['tank2_level']:.1f}%")
-    
-    # 모니터 생성
+    # 테스트 설정 (10초 간격, 10회 샘플링)
     monitor = SensorMonitor(config={
-        'check_interval': 10,  # 10초마다 체크
-        'sample_count': 10,     # 10개 샘플
-        'outlier_remove': 2,    # 상하위 각 2개 제거
+        'check_interval': 10,
+        'sample_count': 10,
+        'outlier_remove': 2,
         'min_water_level': 20.0,
-        'max_water_level': 90.0,
-        'alert_callbacks': [alert_callback]
+        'max_water_level': 90.0
     })
     
-    # [테스트 1] 현재 상태 조회
-    print("\n[테스트 1] 현재 센서 상태 (10개 샘플 + 필터링)")
-    print("-" * 60)
+    # 알림 콜백 등록
+    def alert_callback(alert_type, message, data):
+        print(f"🔔 콜백 실행: {alert_type} - {message}")
+    
+    monitor.add_alert_callback(alert_callback)
+    
+    print("\n" + "="*60)
+    print("📋 테스트 1: 단일 측정")
+    print("="*60)
     status = monitor.get_current_status()
-    print(f"\n최종 결과:")
-    print(f"  탱크 1: {status['tank1_level']:.1f}%")
-    print(f"  탱크 2: {status['tank2_level']:.1f}%")
-    print(f"  채널 0: {status['voltages'][0]:.3f}V")
-    print(f"  채널 1: {status['voltages'][1]:.3f}V")
+    print(f"✅ 탱크1: {status['tank1_level']:.1f}%")
+    print(f"✅ 탱크2: {status['tank2_level']:.1f}%")
     
-    # [테스트 2] 20초 모니터링
-    print("\n[테스트 2] 20초 실시간 모니터링 (2회 × 10초)")
-    print("-" * 60)
-    print("⏰ 10초마다 센서 체크 (각 10개 샘플)")
-    print("⚠️  Ctrl+C로 중지할 수 있습니다.\n")
+    print("\n" + "="*60)
+    print("📋 테스트 2: 실시간 모니터링 (20초)")
+    print("="*60)
+    monitor.start(blocking=False)
+    time.sleep(20)
+    monitor.stop()
     
-    try:
-        # 백그라운드로 시작
-        monitor.start(blocking=False)
-        
-        # 20초 대기
-        time.sleep(20)
-        
-        # 중지
-        monitor.stop()
-        
-    except KeyboardInterrupt:
-        print("\n테스트 중단")
-        monitor.stop()
-    
-    # [테스트 3] 히스토리 조회
-    print("\n[테스트 3] 센서 히스토리")
-    print("-" * 60)
-    history = monitor.get_history(limit=5)
-    print(f"최근 {len(history)}개 데이터:")
+    print("\n" + "="*60)
+    print("📋 테스트 3: 히스토리 조회")
+    print("="*60)
+    history = monitor.get_history(limit=2)
     for i, data in enumerate(history, 1):
-        print(f"  {i}. {data['timestamp']}: 탱크1={data['tank1_level']:.1f}%, "
+        print(f"기록 {i}: {data['timestamp']} - "
+              f"탱크1={data['tank1_level']:.1f}%, "
               f"탱크2={data['tank2_level']:.1f}%")
     
-    # [테스트 4] 평균 수위
-    print("\n[테스트 4] 평균 수위")
-    print("-" * 60)
+    print("\n" + "="*60)
+    print("📋 테스트 4: 평균 수위")
+    print("="*60)
     avg = monitor.get_average_levels()
-    print(f"전체 데이터 평균 ({avg['count']}개):")
-    print(f"  탱크 1: {avg['tank1']:.1f}%")
-    print(f"  탱크 2: {avg['tank2']:.1f}%")
+    print(f"✅ 평균 탱크1: {avg['tank1']:.1f}%")
+    print(f"✅ 평균 탱크2: {avg['tank2']:.1f}%")
+    print(f"✅ 데이터 개수: {avg['count']}")
     
     print("\n" + "="*60)
     print("✅ 모든 테스트 완료!")
-    print("="*60 + "\n")
+    print("="*60)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     test_sensor_monitor()
