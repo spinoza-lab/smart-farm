@@ -65,7 +65,6 @@
             --font-size-small: 28px;
         }
         
-        
         .navbar {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
@@ -168,11 +167,6 @@
             justify-content: center;
             font-size: 20px;
         }
-        
-        #fontSizeIndicator {
-            font-size: 14px;
-            font-weight: bold;
-        }
         }
         
         .font-size-controls .btn {
@@ -221,18 +215,14 @@
             <i class="bi bi-dash-lg"></i>
         </button>
         <button class="btn btn-primary btn-font-size" onclick="resetFontSize()" title="보통">
-            <span id="fontSizeIndicator">3/6</span>
+            <i class="bi bi-circle-fill"></i>
         </button>
         <button class="btn btn-outline-secondary btn-font-size" onclick="increaseFontSize()" title="크게">
             <i class="bi bi-plus-lg"></i>
         </button>
     </div>
         <div class="mt-2">
-            <small class="text-muted d-block">폰트</small>
-            <input type="range" class="form-range" min="1" max="6" value="3" 
-                   id="fontSlider" oninput="setFontSizeBySlider(this.value)" 
-                   style="width: 50px;">
-        </div>
+            
     </div>
 
     <div class="container-fluid mt-4">
@@ -309,7 +299,7 @@
                                             <i class="bi bi-dash"></i>
                                         </button>
                                         <input type="number" class="form-control" id="tank1Empty" 
-                                               value="0.5" step="0.1" min="0" max="5">
+                                               value="0.5" step="0.001" min="0" max="5">
                                         <button class="btn btn-secondary btn-number" onclick="adjustValue('tank1Empty', 0.1)">
                                             <i class="bi bi-plus"></i>
                                         </button>
@@ -326,7 +316,7 @@
                                             <i class="bi bi-dash"></i>
                                         </button>
                                         <input type="number" class="form-control" id="tank1Full" 
-                                               value="4.5" step="0.1" min="0" max="5">
+                                               value="4.5" step="0.001" min="0" max="5">
                                         <button class="btn btn-secondary btn-number" onclick="adjustValue('tank1Full', 0.1)">
                                             <i class="bi bi-plus"></i>
                                         </button>
@@ -358,7 +348,7 @@
                                             <i class="bi bi-dash"></i>
                                         </button>
                                         <input type="number" class="form-control" id="tank2Empty" 
-                                               value="0.5" step="0.1" min="0" max="5">
+                                               value="0.5" step="0.001" min="0" max="5">
                                         <button class="btn btn-secondary btn-number" onclick="adjustValue('tank2Empty', 0.1)">
                                             <i class="bi bi-plus"></i>
                                         </button>
@@ -375,7 +365,7 @@
                                             <i class="bi bi-dash"></i>
                                         </button>
                                         <input type="number" class="form-control" id="tank2Full" 
-                                               value="4.5" step="0.1" min="0" max="5">
+                                               value="4.5" step="0.001" min="0" max="5">
                                         <button class="btn btn-secondary btn-number" onclick="adjustValue('tank2Full', 0.1)">
                                             <i class="bi bi-plus"></i>
                                         </button>

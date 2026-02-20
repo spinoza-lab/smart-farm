@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 sensor_reader.py
-센서 데이터 읽기 클래스 (ADS1115 ADC) - 캘리브레이션 지원
+센서 데이터 읽기 클래스 (ADS1115 ADC)
 """
 
 import board
@@ -9,8 +9,6 @@ import busio
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
 import time
-import json
-import os
 
 
 class SensorReader:
@@ -19,7 +17,7 @@ class SensorReader:
     # 센서 매핑
     SENSOR_MAP = {
         'water_level_1': 0,  # A0: 물탱크 1 수위센서
-        'water_level_2': 1,  # A1: 양액탱크 2 수위센서
+        'water_level_2': 1,  # A1: 물탱크 2 수위센서
         'spare_1': 2,        # A2: 예비
         'spare_2': 3,        # A3: 예비
     }
@@ -45,52 +43,7 @@ class SensorReader:
             3: AnalogIn(self.ads, ADS.P3),
         }
         
-        # 캘리브레이션 로드
-        self.calibration = self._load_calibration()
-        
         print(f"✅ SensorReader 초기화 완료")
-        print(f"   센서 타입: {self.calibration.get('sensor_type', 'voltage')}")
-    
-    def _load_calibration(self):
-        """캘리브레이션 파일 로드"""
-        config_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'config',
-            'sensor_calibration.json'
-        )
-        
-        try:
-            if os.path.exists(config_path):
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    calibration = json.load(f)
-                print(f"📋 캘리브레이션 로드 완료: {config_path}")
-                return calibration
-            else:
-                print(f"⚠️  캘리브레이션 파일 없음, 기본값 사용")
-                return self._get_default_calibration()
-        except Exception as e:
-            print(f"⚠️  캘리브레이션 로드 실패: {e}, 기본값 사용")
-            return self._get_default_calibration()
-    
-    def _get_default_calibration(self):
-        """기본 캘리브레이션 값"""
-        return {
-            'sensor_type': 'voltage',
-            'tank1_water': {
-                'empty_value': 0.5,
-                'full_value': 4.5
-            },
-            'tank2_nutrient': {
-                'empty_value': 0.5,
-                'full_value': 4.5
-            }
-        }
-    
-    def reload_calibration(self):
-        """캘리브레이션 재로드 (설정 변경 후 호출)"""
-        print("🔄 캘리브레이션 재로드 중...")
-        self.calibration = self._load_calibration()
-        print("✅ 캘리브레이션 재로드 완료")
     
     def read_voltage(self, channel):
         """
@@ -141,49 +94,9 @@ class SensorReader:
         channel = self.SENSOR_MAP[sensor_name]
         return self.read_voltage(channel)
     
-    def _voltage_to_percent(self, voltage, empty_value, full_value):
-        """
-        전압 → 퍼센트 변환 (선형 보간)
-        
-        Args:
-            voltage: 현재 전압 (V)
-            empty_value: 공탱크 전압 (V)
-            full_value: 만수 전압 (V)
-            
-        Returns:
-            float: 수위 퍼센트 (0-100%)
-        """
-        if full_value == empty_value:
-            return 0.0
-        
-        percent = ((voltage - empty_value) / (full_value - empty_value)) * 100.0
-        percent = max(0, min(100, percent))  # 0-100 범위로 제한
-        
-        return percent
-    
-    def _current_to_percent(self, current_ma, empty_current=4.0, full_current=20.0):
-        """
-        전류(4-20mA) → 퍼센트 변환
-        
-        Args:
-            current_ma: 현재 전류 (mA)
-            empty_current: 공탱크 전류 (mA, 기본 4)
-            full_current: 만수 전류 (mA, 기본 20)
-            
-        Returns:
-            float: 수위 퍼센트 (0-100%)
-        """
-        if full_current == empty_current:
-            return 0.0
-        
-        percent = ((current_ma - empty_current) / (full_current - empty_current)) * 100.0
-        percent = max(0, min(100, percent))
-        
-        return percent
-    
     def read_water_level(self, tank_num):
         """
-        물탱크 수위 읽기 (캘리브레이션 적용)
+        물탱크 수위 읽기
         
         Args:
             tank_num: 탱크 번호 (1 또는 2)
@@ -193,10 +106,8 @@ class SensorReader:
         """
         if tank_num == 1:
             voltage = self.read_sensor('water_level_1')
-            tank_key = 'tank1_water'
         elif tank_num == 2:
             voltage = self.read_sensor('water_level_2')
-            tank_key = 'tank2_nutrient'
         else:
             print(f"❌ 잘못된 탱크 번호: {tank_num}")
             return None
@@ -204,25 +115,10 @@ class SensorReader:
         if voltage is None:
             return None
         
-        # 캘리브레이션 정보 가져오기
-        tank_cal = self.calibration.get(tank_key, {})
-        empty_value = tank_cal.get('empty_value', 0.5)
-        full_value = tank_cal.get('full_value', 4.5)
-        
-        sensor_type = self.calibration.get('sensor_type', 'voltage')
-        
-        if sensor_type == 'current':
-            # 전류 센서 (4-20mA)
-            # 전압 → 전류 변환 (250Ω 저항 가정)
-            current_ma = voltage * 4.0  # 5V = 20mA
-            percent = self._current_to_percent(
-                current_ma,
-                empty_current=empty_value * 4.0,
-                full_current=full_value * 4.0
-            )
-        else:
-            # 전압 센서 (0-5V)
-            percent = self._voltage_to_percent(voltage, empty_value, full_value)
+        # 전압 → 퍼센트 변환
+        # 예: 0V = 0%, 5V = 100%
+        percent = (voltage / 5.0) * 100.0
+        percent = max(0, min(100, percent))  # 0-100 범위로 제한
         
         return percent
     
@@ -319,44 +215,36 @@ class SensorReader:
 # 테스트 코드
 if __name__ == "__main__":
     print("="*60)
-    print("🧪 SensorReader 테스트 (캘리브레이션 지원)")
+    print("🧪 SensorReader 테스트")
     print("="*60)
     
     try:
         # 센서 리더 초기화
         sensor = SensorReader(address=0x48)
         
-        # 테스트 1: 캘리브레이션 정보 출력
-        print("\n[테스트 1] 캘리브레이션 정보")
-        print(f"   센서 타입: {sensor.calibration.get('sensor_type')}")
-        print(f"   탱크1 공탱크: {sensor.calibration['tank1_water']['empty_value']}V")
-        print(f"   탱크1 만수: {sensor.calibration['tank1_water']['full_value']}V")
-        print(f"   탱크2 공탱크: {sensor.calibration['tank2_nutrient']['empty_value']}V")
-        print(f"   탱크2 만수: {sensor.calibration['tank2_nutrient']['full_value']}V")
-        
-        # 테스트 2: 단일 채널 읽기
-        print("\n[테스트 2] 채널 0 읽기")
+        # 테스트 1: 단일 채널 읽기
+        print("\n[테스트 1] 채널 0 읽기")
         voltage = sensor.read_voltage(0)
         raw = sensor.read_raw(0)
         print(f"   전압: {voltage:.3f}V")
         print(f"   RAW: {raw}")
         
-        # 테스트 3: 물탱크 수위 읽기 (캘리브레이션 적용)
-        print("\n[테스트 3] 물탱크 수위 (캘리브레이션 적용)")
+        # 테스트 2: 물탱크 수위 읽기
+        print("\n[테스트 2] 물탱크 수위")
         for tank in [1, 2]:
             level = sensor.read_water_level(tank)
             if level is not None:
                 print(f"   탱크 {tank}: {level:.1f}%")
         
-        # 테스트 4: 모든 채널 읽기
-        print("\n[테스트 4] 모든 채널 읽기")
+        # 테스트 3: 모든 채널 읽기
+        print("\n[테스트 3] 모든 채널 읽기")
         all_data = sensor.read_all_channels()
         for channel, voltage in all_data.items():
             print(f"   채널 {channel}: {voltage:.3f}V")
         
-        # 테스트 5: 캘리브레이션 재로드
-        print("\n[테스트 5] 캘리브레이션 재로드")
-        sensor.reload_calibration()
+        # 테스트 4: 모니터링 (10초)
+        print("\n[테스트 4] 센서 모니터링")
+        sensor.monitor(interval=2, duration=10)
         
         print("\n" + "="*60)
         print("✅ 모든 테스트 완료!")

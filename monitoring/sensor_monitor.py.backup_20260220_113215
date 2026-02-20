@@ -76,24 +76,6 @@ class SensorMonitor:
         
         # ✅ 마지막 측정값 캐시 추가
         self._last_data = None
-        self._last_data_lock = __import__('threading').Lock()
-        
-        # ✅ 캘리브레이션 로드 (초기화 시)
-        import os
-        config_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'config', 'sensor_calibration.json'
-        )
-        if os.path.exists(config_path):
-            print(f"📖 캘리브레이션 파일 로드: {config_path}")
-            self.load_calibration(config_path)
-        else:
-            print(f"⚠️  캘리브레이션 파일 없음, 기본값 사용")
-            self.sensor_type = 'voltage'
-            self.tank1_empty = 0.0
-            self.tank1_full = 3.3
-            self.tank2_empty = 0.0
-            self.tank2_full = 3.3
         self._last_data_lock = threading.Lock()
         
         # 마지막 알림 시간 (중복 방지)
@@ -214,9 +196,9 @@ class SensorMonitor:
             else:
                 trimmed = ch_values
             
-            # 평균 계산 (소수점 3자리 반올림)
+            # 평균 계산
             avg = sum(trimmed) / len(trimmed)
-            filtered_voltages.append(round(avg, 3))
+            filtered_voltages.append(avg)
         
         print(f"✅ 필터링 완료: "
               f"CH0={filtered_voltages[0]:.3f}V CH1={filtered_voltages[1]:.3f}V "
@@ -225,34 +207,11 @@ class SensorMonitor:
         # 타임스탬프
         timestamp = self.rtc.get_datetime_string('%Y-%m-%d %H:%M:%S')
         
-        # ✅ 필터링된 전압으로 직접 수위 계산 (캘리브레이션 즉시 반영!)
+        # 필터링된 전압으로 수위 계산
+        # 임시로 sensor_reader를 사용해서 각 채널 읽기
         # CH0 = 탱크1, CH1 = 탱크2
-        tank1_voltage = filtered_voltages[0]
-        tank2_voltage = filtered_voltages[1]
-        
-        # 🔥 최신 캘리브레이션 값 읽기
-        tank1_empty = self.tank1_empty
-        tank1_full = self.tank1_full
-        tank2_empty = self.tank2_empty
-        tank2_full = self.tank2_full
-        
-        # 탱크1 수위 계산
-        if tank1_voltage <= tank1_empty:
-            tank1_level = 0.0
-        elif tank1_voltage >= tank1_full:
-            tank1_level = 100.0
-        else:
-            tank1_level = round(((tank1_voltage - tank1_empty) / (tank1_full - tank1_empty)) * 100, 1)
-        
-        # 탱크2 수위 계산
-        if tank2_voltage <= tank2_empty:
-            tank2_level = 0.0
-        elif tank2_voltage >= tank2_full:
-            tank2_level = 100.0
-        else:
-            tank2_level = round(((tank2_voltage - tank2_empty) / (tank2_full - tank2_empty)) * 100, 1)
-        
-        print(f"🔍 [CALC] 탱크2: ({tank2_voltage:.3f}V - {tank2_empty:.3f}V) / ({tank2_full:.3f}V - {tank2_empty:.3f}V) = {tank2_level:.1f}%")
+        tank1_level = self.sensor_reader.read_water_level(tank_num=1)
+        tank2_level = self.sensor_reader.read_water_level(tank_num=2)
         
         data = {
             'timestamp': timestamp,
@@ -260,10 +219,6 @@ class SensorMonitor:
             'tank1_level': tank1_level,
             'tank2_level': tank2_level,
         }
-        
-        # ✅ 캐시 업데이트
-        with self._last_data_lock:
-            self._last_data = data.copy()
         
         return data
     
@@ -345,48 +300,6 @@ class SensorMonitor:
         print(f"   CH0: {voltages[0]:.3f}V | CH1: {voltages[1]:.3f}V | "
               f"CH2: {voltages[2]:.3f}V | CH3: {voltages[3]:.3f}V")
     
-    def load_calibration(self, config_path):
-        """캘리브레이션 설정 다시 로드"""
-        try:
-            import json
-            print(f"🔍 캘리브레이션 파일 읽기 시작: {config_path}")
-            
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            
-            print(f"🔍 JSON 파싱 완료: {list(config.keys())}")
-            
-            self.sensor_type = config.get('sensor_type', 'voltage')
-            
-            tank1 = config.get('tank1_water', {})
-            tank2 = config.get('tank2_nutrient', {})
-            
-            self.tank1_empty = float(tank1.get('empty_value', 0.0))
-            self.tank1_full = float(tank1.get('full_value', 3.3))
-            self.tank2_empty = float(tank2.get('empty_value', 0.0))
-            self.tank2_full = float(tank2.get('full_value', 3.3))
-            
-            print(f"✅ 캘리브레이션 재로드 완료!")
-            print(f"   센서 타입: {self.sensor_type}")
-            print(f"   탱크1: {self.tank1_empty:.3f}V ~ {self.tank1_full:.3f}V")
-            print(f"   탱크2: {self.tank2_empty:.3f}V ~ {self.tank2_full:.3f}V")
-            print(f"🔍 [DEBUG] 실제 저장된 값: tank2_empty={self.tank2_empty}, tank2_full={self.tank2_full}")
-            
-            return True
-            
-        except FileNotFoundError as e:
-            print(f"❌ 파일을 찾을 수 없음: {e}")
-            return False
-        except json.JSONDecodeError as e:
-            print(f"❌ JSON 파싱 오류: {e}")
-            return False
-        except Exception as e:
-            print(f"❌ 캘리브레이션 로드 실패: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
-    
-
     def get_current_status(self) -> Dict:
         """
         현재 센서 상태 조회

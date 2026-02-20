@@ -56,10 +56,8 @@ def periodic_data_sender():
     while monitoring_active:
         try:
             if sensor_monitor:
-                # ✅ 직접 샘플링 (캘리브레이션 즉시 반영!)
-                status = sensor_monitor._collect_sensor_data()
-                
-                print(f"🔄 [SENDER] 샘플링 완료: 탱크1={status['tank1_level']:.1f}%, 탱크2={status['tank2_level']:.1f}%")
+                # 🔥 캐시된 센서 상태 가져오기 (새로운 샘플링 없음)
+                status = sensor_monitor.get_current_status()
                 
                 # 전역 캐시 업데이트
                 global cached_sensor_data
@@ -426,23 +424,23 @@ def handle_disconnect():
 
 @socketio.on('request_status')
 def handle_request_status():
-    """상태 요청 (캐시만 반환, 샘플링 안 함)"""
-    # ✅ 캐시된 데이터만 반환 (샘플링 안 함!)
-    global cached_sensor_data
-    
-    # timestamp 타입 체크
-    timestamp_obj = cached_sensor_data.get('timestamp', '')
-    if isinstance(timestamp_obj, str):
-        timestamp_str = timestamp_obj
-    else:
-        timestamp_str = timestamp_obj.strftime('%Y-%m-%d %H:%M:%S')
-    
-    emit('sensor_update', {
-        'timestamp': timestamp_str,
-        'tank1_level': round(cached_sensor_data.get('tank1_level', 0), 1),
-        'tank2_level': round(cached_sensor_data.get('tank2_level', 0), 1),
-        'voltages': [round(v, 3) for v in cached_sensor_data.get('voltages', [0, 0, 0, 0])]
-    })
+    """상태 요청"""
+    if sensor_monitor:
+        status = sensor_monitor.get_current_status()
+        
+        # timestamp 타입 체크
+        timestamp_obj = status['timestamp']
+        if isinstance(timestamp_obj, str):
+            timestamp_str = timestamp_obj
+        else:
+            timestamp_str = timestamp_obj.strftime('%Y-%m-%d %H:%M:%S')
+        
+        emit('sensor_update', {
+            'timestamp': timestamp_str,
+            'tank1_level': round(status['tank1_level'], 1),
+            'tank2_level': round(status['tank2_level'], 1),
+            'voltages': [round(v, 3) for v in status['voltages']]
+        })
 
 
 # ============================================================
@@ -528,13 +526,13 @@ def save_calibration():
                 'sensor_type': data.get('sensor_type', 'voltage'),
                 'last_updated': now,
                 'tank1_water': {
-                    'empty_value': round(float(data['tank1_water']['empty_value']), 3),
-                    'full_value': round(float(data['tank1_water']['full_value']), 3),
+                    'empty_value': float(data['tank1_water']['empty_value']),
+                    'full_value': float(data['tank1_water']['full_value']),
                     'calibrated_at': now
                 },
                 'tank2_nutrient': {
-                    'empty_value': round(float(data['tank2_nutrient']['empty_value']), 3),
-                    'full_value': round(float(data['tank2_nutrient']['full_value']), 3),
+                    'empty_value': float(data['tank2_nutrient']['empty_value']),
+                    'full_value': float(data['tank2_nutrient']['full_value']),
                     'calibrated_at': now
                 }
             }
@@ -550,14 +548,8 @@ def save_calibration():
         
         # 캐시 초기화 및 즉시 새 데이터 샘플링
         print("🔄 캘리브레이션 변경 후 즉시 샘플링...")
-        new_data = sensor_monitor._collect_sensor_data()  # 직접 샘플링
-        
-        # ✅ 두 캐시 모두 업데이트 (동기화!)
-        sensor_monitor._last_data = new_data
-        global cached_sensor_data
-        cached_sensor_data.update(new_data)
-        
-        print(f"✅ 새 캘리브레이션 적용: 탱크1={new_data.get('tank1_level', 0):.1f}%, 탱크2={new_data.get('tank2_level', 0):.1f}%")
+        cached_sensor_data = sensor_monitor.get_current_status()
+        print(f"✅ 새 캘리브레이션 적용: 탱크1={cached_sensor_data.get('tank1_level', 0):.1f}%, 탱크2={cached_sensor_data.get('tank2_level', 0):.1f}%")
         
         return jsonify({
             'success': True,
@@ -589,21 +581,23 @@ def get_current_sensor_values():
                 calibration = json.load(f)
                 sensor_type = calibration.get('sensor_type', 'voltage')
         
-        # ✅ 캐시된 센서 값만 반환 (샘플링 안 함!)
-        global cached_sensor_data
-        
-        voltages = cached_sensor_data.get('voltages', [0, 0, 0, 0])
-        tank1_value = voltages[0] if len(voltages) > 0 else 0
-        tank2_value = voltages[1] if len(voltages) > 1 else 0
-        
-        return jsonify({
-            'success': True,
-            'sensor_type': sensor_type,
-            'tank1_value': tank1_value,
-            'tank2_value': tank2_value,
-            'tank1_water': calibration.get('tank1_water', {}),
-            'tank2_nutrient': calibration.get('tank2_nutrient', {})
-        })
+        if sensor_monitor:
+            status = sensor_monitor.get_current_status()
+            
+            tank1_value = status['voltages'][0]
+            tank2_value = status['voltages'][1]
+            
+            return jsonify({
+                'success': True,
+                'sensor_type': sensor_type,
+                'tank1_value': tank1_value,
+                'tank2_value': tank2_value
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'SensorMonitor가 초기화되지 않았습니다'
+            }), 500
             
     except Exception as e:
         return jsonify({

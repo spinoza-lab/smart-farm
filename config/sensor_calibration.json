@@ -1,14 +1,14 @@
 {
   "sensor_type": "voltage",
-  "last_updated": "2026-02-20 09:48:31",
+  "last_updated": "2026-02-20 13:16:36",
   "tank1_water": {
-    "empty_value": 0.5,
-    "full_value": 4.5,
-    "calibrated_at": null
+    "empty_value": 0.3,
+    "full_value": 0.7,
+    "calibrated_at": "2026-02-20 13:16:36"
   },
   "tank2_nutrient": {
-    "empty_value": 0.5,
-    "full_value": 4.5,
-    "calibrated_at": null
+    "empty_value": 0.301,
+    "full_value": 1.6,
+    "calibrated_at": "2026-02-20 13:16:36"
   }
 }
