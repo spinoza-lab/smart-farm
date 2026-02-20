@@ -652,14 +652,21 @@ def activate_hose_gun():
 
 @app.route('/api/hose-gun/deactivate', methods=['POST'])
 def deactivate_hose_gun():
-    """호스건 비활성화 (Mock)"""
-    global hose_gun_active
+    """호스건 비활성화"""
+    global relay_controller
     try:
-                print("🔒 호스건 비활성화 (Mock)")
+        if relay_controller is None:
+            return jsonify({
+                'success': False,
+                'error': 'RelayController 초기화 안됨'
+            }), 500
+        
+        relay_controller.hand_gun_off()
+        print("🔒 호스건 비활성화")
         
         return jsonify({
             'success': True,
-            'message': '호스건이 비활성화되었습니다 (Mock)'
+            'message': '호스건이 비활성화되었습니다'
         })
     except Exception as e:
         return jsonify({
