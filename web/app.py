@@ -420,6 +420,205 @@ def handle_request_status():
 # 메인 실행
 # ============================================================
 
+# ============================================================
+# 설정 페이지 라우트 (Stage 3.5 추가)
+# ============================================================
+
+@app.route('/settings')
+def settings():
+    """설정 페이지"""
+    return render_template('settings.html')
+
+
+# ============================================================
+# 센서 캘리브레이션 API (Stage 3.5 추가)
+# ============================================================
+
+@app.route('/api/calibration', methods=['GET'])
+def get_calibration():
+    """캘리브레이션 설정 조회"""
+    try:
+        import json
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'config',
+            'sensor_calibration.json'
+        )
+        
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                calibration = json.load(f)
+            return jsonify(calibration)
+        else:
+            return jsonify({
+                'sensor_type': 'voltage',
+                'tank1_water': {
+                    'empty_value': 0.5,
+                    'full_value': 4.5,
+                    'calibrated_at': None
+                },
+                'tank2_nutrient': {
+                    'empty_value': 0.5,
+                    'full_value': 4.5,
+                    'calibrated_at': None
+                }
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/calibration', methods=['POST'])
+def save_calibration():
+    """캘리브레이션 설정 저장"""
+    try:
+        import json
+        from datetime import datetime
+        
+        data = request.get_json()
+        
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'config',
+            'sensor_calibration.json'
+        )
+        
+        if data.get('update_type_only'):
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    calibration = json.load(f)
+            else:
+                calibration = {}
+            
+            calibration['sensor_type'] = data.get('sensor_type', 'voltage')
+            calibration['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            calibration = {
+                'sensor_type': data.get('sensor_type', 'voltage'),
+                'last_updated': now,
+                'tank1_water': {
+                    'empty_value': float(data['tank1_water']['empty_value']),
+                    'full_value': float(data['tank1_water']['full_value']),
+                    'calibrated_at': now
+                },
+                'tank2_nutrient': {
+                    'empty_value': float(data['tank2_nutrient']['empty_value']),
+                    'full_value': float(data['tank2_nutrient']['full_value']),
+                    'calibrated_at': now
+                }
+            }
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(calibration, f, indent=2, ensure_ascii=False)
+        
+        return jsonify({
+            'success': True,
+            'message': '캘리브레이션 설정이 저장되었습니다'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/calibration/current', methods=['GET'])
+def get_current_sensor_values():
+    """실시간 센서 값 조회"""
+    try:
+        import json
+        
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'config',
+            'sensor_calibration.json'
+        )
+        
+        sensor_type = 'voltage'
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                calibration = json.load(f)
+                sensor_type = calibration.get('sensor_type', 'voltage')
+        
+        if sensor_monitor:
+            status = sensor_monitor.get_current_status()
+            
+            tank1_value = status['voltages'][0]
+            tank2_value = status['voltages'][1]
+            
+            return jsonify({
+                'success': True,
+                'sensor_type': sensor_type,
+                'tank1_value': tank1_value,
+                'tank2_value': tank2_value
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'SensorMonitor가 초기화되지 않았습니다'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# ============================================================
+# 호스건 제어 API (Stage 3.5 추가 - Mock)
+# ============================================================
+
+hose_gun_active = False
+
+@app.route('/api/hose-gun/status', methods=['GET'])
+def get_hose_gun_status():
+    """호스건 상태 조회"""
+    return jsonify({
+        'active': hose_gun_active
+    })
+
+
+@app.route('/api/hose-gun/activate', methods=['POST'])
+def activate_hose_gun():
+    """호스건 활성화 (Mock)"""
+    global hose_gun_active
+    try:
+        hose_gun_active = True
+        print("🚰 호스건 활성화 (Mock)")
+        
+        return jsonify({
+            'success': True,
+            'message': '호스건이 활성화되었습니다 (Mock)'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/hose-gun/deactivate', methods=['POST'])
+def deactivate_hose_gun():
+    """호스건 비활성화 (Mock)"""
+    global hose_gun_active
+    try:
+        hose_gun_active = False
+        print("🔒 호스건 비활성화 (Mock)")
+        
+        return jsonify({
+            'success': True,
+            'message': '호스건이 비활성화되었습니다 (Mock)'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("🌐 스마트 관수 시스템 웹 대시보드 v2")
