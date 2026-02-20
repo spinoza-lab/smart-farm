@@ -69,3 +69,6 @@ logs/*.log
 # ==========================================
 # config/sensor_calibration.json  # 주석: 실제 캘리브레이션은 커밋해도 됨
 
+
+# 관수 설정 백업 파일
+irrigation/backups/

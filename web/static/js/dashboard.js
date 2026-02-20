@@ -70,10 +70,10 @@ function updateSensorData(data) {
     updateWaterGauge('tank2', tank2Level);
     
     // 전압 데이터
-    document.getElementById('voltage-ch0').textContent = data.voltages[0].toFixed(3) + 'V';
-    document.getElementById('voltage-ch1').textContent = data.voltages[1].toFixed(3) + 'V';
-    document.getElementById('voltage-ch2').textContent = data.voltages[2].toFixed(3) + 'V';
-    document.getElementById('voltage-ch3').textContent = data.voltages[3].toFixed(3) + 'V';
+    // document.getElementById('voltage-ch0').textContent = data.voltages[0].toFixed(3) + 'V';  // 센서 전압 표시 제거됨
+    // document.getElementById('voltage-ch1').textContent = data.voltages[1].toFixed(3) + 'V';  // 센서 전압 표시 제거됨
+    // document.getElementById('voltage-ch2').textContent = data.voltages[2].toFixed(3) + 'V';  // 센서 전압 표시 제거됨
+    // document.getElementById('voltage-ch3').textContent = data.voltages[3].toFixed(3) + 'V';  // 센서 전압 표시 제거됨
 }
 
 function updateWaterGauge(tankId, level) {
