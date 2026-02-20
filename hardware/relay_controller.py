@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
 relay_controller.py
-릴레이 제어 클래스
+릴레이 제어 클래스 (v2.0 - 단순화)
+
+하드웨어 구성:
+- 펌프: 1개 (모든 구역 공용)
+- Zone: 12개 독립 밸브
+- 필수 제어: 양액차단, 물차단, 핸드건, 체크밸브
 """
 
 from hardware.gpio_expander import GPIOExpander
@@ -9,60 +14,50 @@ import time
 
 
 class RelayController:
-    """릴레이 모듈 제어"""
+    """릴레이 모듈 제어 (v2.0)"""
     
-    # 릴레이 매핑 (예시)
+    # 릴레이 매핑 (relay_hardware_config.md 기준)
     RELAY_MAP = {
-        # 관수 밸브 (12개)
-        'valve': {
-            1: (0x20, 0),   # MCP #1, PA0
-            2: (0x20, 1),   # MCP #1, PA1
-            3: (0x20, 2),   # MCP #1, PA2
-            4: (0x20, 3),   # MCP #1, PA3
-            5: (0x20, 4),   # MCP #1, PA4
-            6: (0x20, 5),   # MCP #1, PA5
-            7: (0x20, 6),   # MCP #1, PA6
-            8: (0x20, 7),   # MCP #1, PA7
-            9: (0x20, 8),   # MCP #1, PB0
-            10: (0x20, 9),  # MCP #1, PB1
-            11: (0x20, 10), # MCP #1, PB2
-            12: (0x20, 11), # MCP #1, PB3
-        },
+        # === 필수 제어 (보드 #1) ===
+        'pump': (0x20, 0),           # PA0: 관수펌프
+        'nutrient_block': (0x20, 1), # PA1: 양액탱크 차단
+        'water_block': (0x20, 2),    # PA2: 물탱크 차단
+        'hand_gun': (0x20, 3),       # PA3: 핸드건
+        'check_valve': (0x20, 4),    # PA4: 체크밸브
+        'spare_1': (0x20, 5),        # PA5: 예비
         
-        # 펌프 (3개)
-        'pump': {
-            1: (0x20, 12),  # MCP #1, PB4
-            2: (0x20, 13),  # MCP #1, PB5
-            3: (0x20, 14),  # MCP #1, PB6
-        },
+        # === Zone 1~12 (보드 #2, #3) ===
+        'zone_1': (0x20, 6),         # PA6
+        'zone_2': (0x20, 7),         # PA7
+        'zone_3': (0x20, 8),         # PB0
+        'zone_4': (0x20, 9),         # PB1
+        'zone_5': (0x20, 10),        # PB2
+        'zone_6': (0x20, 11),        # PB3
+        'zone_7': (0x20, 12),        # PB4
+        'zone_8': (0x20, 13),        # PB5
+        'zone_9': (0x20, 14),        # PB6
+        'zone_10': (0x20, 15),       # PB7
+        'zone_11': (0x21, 0),        # PA0
+        'zone_12': (0x21, 1),        # PA1
         
-        # 분배 밸브 (3개)
-        'main_valve': {
-            1: (0x20, 15),  # MCP #1, PB7
-            2: (0x21, 0),   # MCP #2, PA0
-            3: (0x21, 1),   # MCP #2, PA1
-        },
-        
-        # 배수 밸브 (4개)
-        'drain': {
-            1: (0x21, 2),   # MCP #2, PA2
-            2: (0x21, 3),   # MCP #2, PA3
-            3: (0x21, 4),   # MCP #2, PA4
-            4: (0x21, 5),   # MCP #2, PA5
-        },
-        
-        # 예비 (2개)
-        'spare': {
-            1: (0x21, 6),   # MCP #2, PA6
-            2: (0x21, 7),   # MCP #2, PA7
-        }
+        # === 예비 (보드 #4) ===
+        'drain_water': (0x21, 2),    # PA2
+        'drain_nutrient': (0x21, 3), # PA3
+        'spare_zone_13': (0x21, 4),  # PA4
+        'spare_zone_14': (0x21, 5),  # PA5
+        'spare_2': (0x21, 6),        # PA6
+        'spare_3': (0x21, 7),        # PA7
     }
+    
+    # Zone 매핑 (1-based)
+    ZONE_MAP = {i: f'zone_{i}' for i in range(1, 13)}
+    MAX_ZONES = 12
     
     def __init__(self):
         """초기화"""
-        print("="*50)
-        print("🔧 RelayController 초기화")
-        print("="*50)
+        print("="*60)
+        print("🔧 RelayController v2.0 초기화")
+        print("="*60)
         
         # GPIO 확장 보드 초기화
         self.gpio_expanders = {
@@ -73,94 +68,192 @@ class RelayController:
         # 모든 릴레이 핀 설정
         self._setup_all_relays()
         
-        print("\n✅ RelayController 초기화 완료")
-        print("="*50)
+        # 평상시 상태로 초기화
+        self._set_default_state()
+        
+        print("\n✅ RelayController v2.0 초기화 완료")
+        print("="*60)
     
     def _setup_all_relays(self):
         """모든 릴레이 핀 설정"""
         print("\n릴레이 핀 설정 중...")
         
-        for category, relays in self.RELAY_MAP.items():
-            for num, (addr, pin) in relays.items():
-                self.gpio_expanders[addr].setup_pin(pin, initial_value=False)
+        for name, (addr, pin) in self.RELAY_MAP.items():
+            self.gpio_expanders[addr].setup_pin(pin, initial_value=False)
         
-        print("✓ 모든 릴레이 핀 설정 완료")
+        print(f"✓ {len(self.RELAY_MAP)}개 릴레이 핀 설정 완료")
     
-    def _set_relay(self, category, num, state):
+    def _set_default_state(self):
+        """평상시 상태로 설정"""
+        print("\n평상시 상태 설정 중...")
+        
+        # 필수 제어 - 평상시 ON
+        self._set_relay('nutrient_block', True)  # 양액탱크 자동 충수
+        self._set_relay('water_block', True)     # 물탱크 자동 충수
+        self._set_relay('check_valve', True)     # 역류 방지
+        
+        # 나머지는 모두 OFF
+        self._set_relay('pump', False)
+        self._set_relay('hand_gun', False)
+        
+        for i in range(1, self.MAX_ZONES + 1):
+            self.zone_off(i)
+        
+        print("✓ 평상시 상태 설정 완료")
+        print("  - 양액차단: ON (자동 충수)")
+        print("  - 물차단: ON (자동 충수)")
+        print("  - 체크밸브: ON (역류 방지)")
+        print("  - 펌프: OFF")
+        print("  - 핸드건: OFF")
+        print("  - 모든 Zone: OFF")
+    
+    def _set_relay(self, name, state):
         """
         릴레이 제어 (내부 메서드)
         
         Args:
-            category: 릴레이 종류 ('valve', 'pump', 'main_valve', 'drain', 'spare')
-            num: 릴레이 번호
+            name: 릴레이 이름 (RELAY_MAP의 키)
             state: True(ON) 또는 False(OFF)
+        
+        Returns:
+            bool: 성공 여부
         """
-        if category not in self.RELAY_MAP:
-            print(f"❌ 잘못된 카테고리: {category}")
+        if name not in self.RELAY_MAP:
+            print(f"❌ 잘못된 릴레이 이름: {name}")
             return False
         
-        if num not in self.RELAY_MAP[category]:
-            print(f"❌ 잘못된 번호: {category} {num}")
-            return False
-        
-        addr, pin = self.RELAY_MAP[category][num]
+        addr, pin = self.RELAY_MAP[name]
         self.gpio_expanders[addr].set_pin(pin, state)
         
         state_str = "ON" if state else "OFF"
-        print(f"{'🟢' if state else '⚫'} {category.upper()} #{num} → {state_str}")
+        print(f"{'🟢' if state else '⚫'} {name.upper()} → {state_str}")
         
         return True
     
-    # ===== 관수 밸브 제어 =====
-    
-    def valve_on(self, num):
-        """관수 밸브 ON"""
-        return self._set_relay('valve', num, True)
-    
-    def valve_off(self, num):
-        """관수 밸브 OFF"""
-        return self._set_relay('valve', num, False)
-    
-    def valve_toggle(self, num):
-        """관수 밸브 토글"""
-        addr, pin = self.RELAY_MAP['valve'][num]
-        current = self.gpio_expanders[addr].get_pin(pin)
-        return self._set_relay('valve', num, not current)
-    
     # ===== 펌프 제어 =====
     
-    def pump_on(self, num):
+    def pump_on(self):
         """펌프 ON"""
-        return self._set_relay('pump', num, True)
+        return self._set_relay('pump', True)
     
-    def pump_off(self, num):
+    def pump_off(self):
         """펌프 OFF"""
-        return self._set_relay('pump', num, False)
+        return self._set_relay('pump', False)
     
-    # ===== 분배 밸브 제어 =====
+    def get_pump_status(self):
+        """펌프 상태 확인"""
+        addr, pin = self.RELAY_MAP['pump']
+        return self.gpio_expanders[addr].get_pin(pin)
     
-    def main_valve_on(self, num):
-        """분배 밸브 ON"""
-        return self._set_relay('main_valve', num, True)
+    # ===== Zone 제어 (1~12) =====
     
-    def main_valve_off(self, num):
-        """분배 밸브 OFF"""
-        return self._set_relay('main_valve', num, False)
+    def zone_on(self, zone_num):
+        """
+        Zone 밸브 ON
+        
+        Args:
+            zone_num: Zone 번호 (1~12)
+        """
+        if zone_num < 1 or zone_num > self.MAX_ZONES:
+            print(f"❌ 잘못된 Zone 번호: {zone_num} (1~{self.MAX_ZONES}만 가능)")
+            return False
+        
+        zone_name = self.ZONE_MAP[zone_num]
+        return self._set_relay(zone_name, True)
     
-    # ===== 배수 밸브 제어 =====
+    def zone_off(self, zone_num):
+        """
+        Zone 밸브 OFF
+        
+        Args:
+            zone_num: Zone 번호 (1~12)
+        """
+        if zone_num < 1 or zone_num > self.MAX_ZONES:
+            print(f"❌ 잘못된 Zone 번호: {zone_num}")
+            return False
+        
+        zone_name = self.ZONE_MAP[zone_num]
+        return self._set_relay(zone_name, False)
     
-    def drain_on(self, num):
-        """배수 밸브 ON"""
-        return self._set_relay('drain', num, True)
+    def get_zone_status(self, zone_num):
+        """
+        Zone 상태 확인
+        
+        Args:
+            zone_num: Zone 번호 (1~12)
+        
+        Returns:
+            bool: True(ON), False(OFF), None(오류)
+        """
+        if zone_num < 1 or zone_num > self.MAX_ZONES:
+            return None
+        
+        zone_name = self.ZONE_MAP[zone_num]
+        addr, pin = self.RELAY_MAP[zone_name]
+        return self.gpio_expanders[addr].get_pin(pin)
     
-    def drain_off(self, num):
-        """배수 밸브 OFF"""
-        return self._set_relay('drain', num, False)
+    def all_zones_off(self):
+        """모든 Zone OFF"""
+        print("\n🔴 모든 Zone OFF")
+        for i in range(1, self.MAX_ZONES + 1):
+            self.zone_off(i)
+    
+    # ===== 핸드건 제어 =====
+    
+    def hand_gun_on(self):
+        """핸드건 ON (안전장치 포함)"""
+        print("\n🚰 핸드건 모드 활성화")
+        
+        # 1. 안전 조치
+        self.pump_off()
+        self.all_zones_off()
+        time.sleep(0.5)
+        
+        # 2. 핸드건 열기
+        return self._set_relay('hand_gun', True)
+    
+    def hand_gun_off(self):
+        """핸드건 OFF"""
+        print("\n🔒 핸드건 모드 종료")
+        return self._set_relay('hand_gun', False)
+    
+    def get_hand_gun_status(self):
+        """핸드건 상태 확인"""
+        addr, pin = self.RELAY_MAP['hand_gun']
+        return self.gpio_expanders[addr].get_pin(pin)
+    
+    # ===== 탱크 차단 제어 =====
+    
+    def nutrient_block_on(self):
+        """양액탱크 차단밸브 ON (자동 충수)"""
+        return self._set_relay('nutrient_block', True)
+    
+    def nutrient_block_off(self):
+        """양액탱크 차단밸브 OFF (차단)"""
+        return self._set_relay('nutrient_block', False)
+    
+    def water_block_on(self):
+        """물탱크 차단밸브 ON (자동 충수)"""
+        return self._set_relay('water_block', True)
+    
+    def water_block_off(self):
+        """물탱크 차단밸브 OFF (차단)"""
+        return self._set_relay('water_block', False)
+    
+    # ===== 체크밸브 제어 =====
+    
+    def check_valve_on(self):
+        """체크밸브 ON (역류 방지)"""
+        return self._set_relay('check_valve', True)
+    
+    def check_valve_off(self):
+        """체크밸브 OFF"""
+        return self._set_relay('check_valve', False)
     
     # ===== 전체 제어 =====
     
     def all_off(self):
-        """모든 릴레이 OFF"""
+        """모든 릴레이 OFF (긴급 정지)"""
         print("\n🔴 모든 릴레이 OFF")
         for gpio in self.gpio_expanders.values():
             gpio.all_off()
@@ -169,90 +262,80 @@ class RelayController:
         """긴급 정지"""
         print("\n🚨 긴급 정지!")
         self.all_off()
+        time.sleep(0.5)
+        # 평상시 상태로 복구
+        self._set_default_state()
     
-    def get_status(self, category, num):
-        """
-        릴레이 상태 확인
-        
-        Returns:
-            bool: 릴레이 상태 (True=ON, False=OFF)
-        """
-        if category not in self.RELAY_MAP:
-            return None
-        if num not in self.RELAY_MAP[category]:
-            return None
-        
-        addr, pin = self.RELAY_MAP[category][num]
-        return self.gpio_expanders[addr].get_pin(pin)
+    # ===== 관수 시나리오 =====
     
-    # ===== 시나리오 메서드 =====
-    
-    def irrigate_zone(self, zone_num, duration=10):
+    def irrigate_zone(self, zone_num, duration=600):
         """
-        구역 관수 (펌프 + 분배밸브 + 관수밸브)
+        구역 관수 (펌프 + Zone 밸브)
         
         Args:
-            zone_num: 구역 번호 (1-12)
+            zone_num: Zone 번호 (1~12)
             duration: 관수 시간 (초)
+        
+        Returns:
+            bool: 성공 여부
         """
-        print(f"\n💧 구역 {zone_num} 관수 시작 (지속시간: {duration}초)")
+        if zone_num < 1 or zone_num > self.MAX_ZONES:
+            print(f"❌ 잘못된 Zone 번호: {zone_num}")
+            return False
+        
+        print(f"\n💧 Zone {zone_num} 관수 시작 (지속시간: {duration}초)")
         
         try:
-            # 1. 펌프 ON (예: 펌프 1 사용)
-            self.pump_on(1)
+            # 1. 사전 조건 확인
+            # (수위 체크는 호출자가 담당)
+            
+            # 2. 펌프 ON
+            self.pump_on()
             time.sleep(0.5)
             
-            # 2. 분배 밸브 ON (예: 분배밸브 1 사용)
-            self.main_valve_on(1)
-            time.sleep(0.5)
+            # 3. Zone 밸브 ON
+            self.zone_on(zone_num)
             
-            # 3. 관수 밸브 ON
-            self.valve_on(zone_num)
-            
-            # 4. 대기
+            # 4. 관수 진행
             print(f"   ⏱️  {duration}초 동안 관수 중...")
             time.sleep(duration)
             
             # 5. 역순으로 OFF
-            self.valve_off(zone_num)
+            self.zone_off(zone_num)
             time.sleep(0.5)
             
-            self.main_valve_off(1)
-            time.sleep(0.5)
+            self.pump_off()
             
-            self.pump_off(1)
-            
-            print(f"✅ 구역 {zone_num} 관수 완료")
+            print(f"✅ Zone {zone_num} 관수 완료")
+            return True
             
         except KeyboardInterrupt:
             print("\n⚠️  사용자 중단")
-            self.all_off()
+            self.zone_off(zone_num)
+            self.pump_off()
+            return False
         except Exception as e:
             print(f"\n❌ 오류 발생: {e}")
-            self.all_off()
+            self.emergency_stop()
+            return False
     
-    def winter_drain_mode(self):
-        """겨울철 동파 방지 배수"""
-        print("\n❄️  겨울철 배수 모드 시작")
+    def get_all_status(self):
+        """
+        모든 릴레이 상태 조회
         
-        try:
-            # 모든 배수 밸브 ON
-            for i in range(1, 5):
-                self.drain_on(i)
-                time.sleep(0.5)
-            
-            print("   ⏱️  60초 동안 배수 중...")
-            time.sleep(60)
-            
-            # 모든 배수 밸브 OFF
-            for i in range(1, 5):
-                self.drain_off(i)
-            
-            print("✅ 배수 완료")
-            
-        except Exception as e:
-            print(f"❌ 배수 실패: {e}")
-            self.all_off()
+        Returns:
+            dict: 릴레이 상태 딕셔너리
+        """
+        status = {
+            'pump': self.get_pump_status(),
+            'hand_gun': self.get_hand_gun_status(),
+            'zones': {}
+        }
+        
+        for i in range(1, self.MAX_ZONES + 1):
+            status['zones'][i] = self.get_zone_status(i)
+        
+        return status
     
     def cleanup(self):
         """정리"""
@@ -265,39 +348,61 @@ class RelayController:
 
 # 테스트 코드
 if __name__ == "__main__":
-    print("\n" + "="*50)
-    print("🧪 RelayController 테스트")
-    print("="*50)
+    print("\n" + "="*60)
+    print("🧪 RelayController v2.0 테스트")
+    print("="*60)
     
     try:
         # 릴레이 컨트롤러 초기화
         relay = RelayController()
         
-        # 테스트 1: 개별 릴레이 제어
-        print("\n[테스트 1] 개별 릴레이 제어")
-        relay.valve_on(1)
-        time.sleep(1)
-        relay.valve_off(1)
+        # 테스트 1: 펌프 제어
+        print("\n[테스트 1] 펌프 제어")
+        print("-" * 60)
+        relay.pump_on()
+        time.sleep(2)
+        relay.pump_off()
         
-        # 테스트 2: 펌프 제어
-        print("\n[테스트 2] 펌프 제어")
-        relay.pump_on(1)
-        time.sleep(1)
-        relay.pump_off(1)
+        # 테스트 2: Zone 제어
+        print("\n[테스트 2] Zone 1 제어")
+        print("-" * 60)
+        relay.zone_on(1)
+        time.sleep(2)
+        relay.zone_off(1)
         
-        # 테스트 3: 구역 관수 (5초)
-        print("\n[테스트 3] 구역 1 관수 (5초)")
-        relay.irrigate_zone(1, duration=5)
+        # 테스트 3: 핸드건 모드
+        print("\n[테스트 3] 핸드건 모드")
+        print("-" * 60)
+        relay.hand_gun_on()
+        time.sleep(2)
+        relay.hand_gun_off()
+        
+        # 테스트 4: 구역 관수 (5초)
+        print("\n[테스트 4] Zone 3 관수 (5초)")
+        print("-" * 60)
+        relay.irrigate_zone(3, duration=5)
+        
+        # 테스트 5: 전체 상태 조회
+        print("\n[테스트 5] 전체 상태 조회")
+        print("-" * 60)
+        status = relay.get_all_status()
+        print(f"펌프: {'ON' if status['pump'] else 'OFF'}")
+        print(f"핸드건: {'ON' if status['hand_gun'] else 'OFF'}")
+        print(f"Zone 상태:")
+        for zone_num, zone_status in status['zones'].items():
+            print(f"  Zone {zone_num}: {'ON' if zone_status else 'OFF'}")
         
         # 정리
         relay.cleanup()
         
-        print("\n" + "="*50)
+        print("\n" + "="*60)
         print("✅ 모든 테스트 완료!")
-        print("="*50)
+        print("="*60)
         
     except KeyboardInterrupt:
         print("\n⚠️  사용자 중단")
-        relay.all_off()
+        relay.emergency_stop()
     except Exception as e:
         print(f"\n❌ 테스트 실패: {e}")
+        import traceback
+        traceback.print_exc()

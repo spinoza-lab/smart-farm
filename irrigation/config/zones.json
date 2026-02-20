@@ -3,20 +3,86 @@
     {
       "id": 1,
       "name": "구역 1",
-      "valve": 1,
-      "pump": 1,
-      "main_valve": 1,
-      "sensor_channel": 0,
-      "enabled": true
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 1 (10분 기본)"
     },
     {
       "id": 2,
-      "name": "토마토 구역",
-      "valve": 1,
-      "pump": 1,
-      "main_valve": 1,
-      "sensor_channel": 0,
-      "enabled": true
+      "name": "구역 2",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 2 (10분 기본)"
+    },
+    {
+      "id": 3,
+      "name": "구역 3",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 3 (10분 기본)"
+    },
+    {
+      "id": 4,
+      "name": "구역 4",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 4 (10분 기본)"
+    },
+    {
+      "id": 5,
+      "name": "구역 5",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 5 (10분 기본)"
+    },
+    {
+      "id": 6,
+      "name": "구역 6",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 6 (10분 기본)"
+    },
+    {
+      "id": 7,
+      "name": "구역 7",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 7 (10분 기본)"
+    },
+    {
+      "id": 8,
+      "name": "구역 8",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 8 (10분 기본)"
+    },
+    {
+      "id": 9,
+      "name": "구역 9",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 9 (10분 기본)"
+    },
+    {
+      "id": 10,
+      "name": "구역 10",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 10 (10분 기본)"
+    },
+    {
+      "id": 11,
+      "name": "구역 11",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 11 (10분 기본)"
+    },
+    {
+      "id": 12,
+      "name": "구역 12",
+      "enabled": true,
+      "duration": 600,
+      "description": "구역 12 (10분 기본)"
     }
   ]
 }

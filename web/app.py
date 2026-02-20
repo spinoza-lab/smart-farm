@@ -20,6 +20,7 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from monitoring.sensor_monitor import SensorMonitor
+from hardware.relay_controller import RelayController
 from monitoring.data_logger import DataLogger
 from monitoring.alert_manager import AlertManager, AlertLevel
 
@@ -34,6 +35,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 sensor_monitor = None
 data_logger = None
 alert_manager = None
+relay_controller = None
 monitoring_active = False
 monitoring_thread = None
 
@@ -130,7 +132,7 @@ def periodic_data_sender():
 
 def init_monitoring_system():
     """모니터링 시스템 초기화"""
-    global sensor_monitor, data_logger, alert_manager
+    global sensor_monitor, data_logger, alert_manager, relay_controller
     
     try:
         # SensorMonitor 초기화
@@ -169,6 +171,9 @@ def init_monitoring_system():
             })
         
         alert_manager.add_callback(alert_callback)
+        # RelayController 초기화
+        relay_controller = RelayController()
+
         
         print("✅ 모니터링 시스템 초기화 완료")
         
@@ -609,28 +614,37 @@ def get_current_sensor_values():
 # 호스건 제어 API (Stage 3.5 추가 - Mock)
 # ============================================================
 
-hose_gun_active = False
 
 @app.route('/api/hose-gun/status', methods=['GET'])
 def get_hose_gun_status():
     """호스건 상태 조회"""
-    return jsonify({
-        'active': hose_gun_active
-    })
+    try:
+        if not relay_controller:
+            return jsonify({'error': 'RelayController가 초기화되지 않았습니다'}), 500
+        
+        status = relay_controller.get_hand_gun_status()
+        return jsonify({
+            'active': status
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/hose-gun/activate', methods=['POST'])
 def activate_hose_gun():
-    """호스건 활성화 (Mock)"""
-    global hose_gun_active
+    """호스건 활성화"""
     try:
-        hose_gun_active = True
-        print("🚰 호스건 활성화 (Mock)")
+        if not relay_controller:
+            return jsonify({'error': 'RelayController가 초기화되지 않았습니다'}), 500
+        
+        # 호스건 활성화 (안전장치 포함)
+        relay_controller.hand_gun_on()
         
         return jsonify({
             'success': True,
-            'message': '호스건이 활성화되었습니다 (Mock)'
+            'message': '호스건이 활성화되었습니다'
         })
     except Exception as e:
+        print(f"❌ 호스건 활성화 오류: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -641,8 +655,7 @@ def deactivate_hose_gun():
     """호스건 비활성화 (Mock)"""
     global hose_gun_active
     try:
-        hose_gun_active = False
-        print("🔒 호스건 비활성화 (Mock)")
+                print("🔒 호스건 비활성화 (Mock)")
         
         return jsonify({
             'success': True,
