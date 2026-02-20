@@ -19,20 +19,18 @@ let chartData = {
 
 socket.on('connect', () => {
     console.log('✅ 서버 연결됨');
-    updateConnectionStatus(true);
-});
+    });
 
 socket.on('disconnect', () => {
     console.log('❌ 서버 연결 끊김');
-    updateConnectionStatus(false);
-});
+    });
 
 socket.on('connected', (data) => {
-    console.log('📡', data.message);
+    // console.log('📡', data.message);  // 디버그용
 });
 
 socket.on('sensor_update', (data) => {
-    console.log('📊 센서 데이터 수신:', data);
+    // console.log('📊 센서 데이터 수신:', data);  // 디버그용
     updateSensorData(data);
     updateChart(data);
 });
@@ -47,22 +45,11 @@ socket.on('new_alert', (alert) => {
 // UI 업데이트 함수
 // ============================================================
 
-function updateConnectionStatus(connected) {
-    const statusBadge = document.getElementById('connection-status');
-    
-    if (connected) {
-        statusBadge.innerHTML = '<i class="fas fa-check-circle"></i> 연결됨';
-        statusBadge.className = 'badge connected';
-    } else {
-        statusBadge.innerHTML = '<i class="fas fa-times-circle"></i> 연결 끊김';
-        statusBadge.className = 'badge disconnected';
-    }
-}
 
 function updateSensorData(data) {
     // 디버깅: 원본 데이터 확인
-    console.log("📊 센서 데이터 수신:", data);
-    console.log("📅 원본 timestamp:", data.timestamp);
+    // console.log("📊 센서 데이터 수신:", data);  // 디버그용
+    // console.log("📅 원본 timestamp:", data.timestamp);  // 디버그용
     
     // 마지막 업데이트 시간 (시간만 표시)
     let displayTime = data.timestamp;
@@ -109,20 +96,20 @@ function updateWaterGauge(tankId, level) {
 }
 
 function updateChart(data) {
-    console.log("📈 [updateChart] 원본 data:", data);
-    console.log("📈 [updateChart] 원본 timestamp:", data.timestamp);
+    // console.log("📈 [updateChart] 원본 data:", data);  // 디버그용
+    // console.log("📈 [updateChart] 원본 timestamp:", data.timestamp);  // 디버그용
     
     let timestamp = data.timestamp;
     if (timestamp && typeof timestamp === 'string') {
         timestamp = timestamp.replace(' ', 'T');
     }
     
-    console.log("📈 [updateChart] 변환된 timestamp:", timestamp);
+    // console.log("📈 [updateChart] 변환된 timestamp:", timestamp);  // 디버그용
     
     const now = new Date(timestamp);
     
-    console.log("📈 [updateChart] Date 객체:", now);
-    console.log("📈 [updateChart] 유효한가?", !isNaN(now.getTime()));
+    // console.log("📈 [updateChart] Date 객체:", now);  // 디버그용
+    // console.log("📈 [updateChart] 유효한가?", !isNaN(now.getTime()));  // 디버그용
     
     const timeLabel = now.toLocaleTimeString('ko-KR', { 
         hour: '2-digit', 
@@ -130,7 +117,7 @@ function updateChart(data) {
         second: '2-digit' 
     });
     
-    console.log("📈 [updateChart] timeLabel:", timeLabel);
+    // console.log("📈 [updateChart] timeLabel:", timeLabel);  // 디버그용
 
     
     // 데이터 추가
@@ -138,8 +125,8 @@ function updateChart(data) {
     chartData.tank1.push(data.tank1_level);
     chartData.tank2.push(data.tank2_level);
     
-    // 최근 20개만 유지
-    if (chartData.labels.length > 20) {
+    // 최근 360개만 유지 (1시간)
+    if (chartData.labels.length > 360) {
         chartData.labels.shift();
         chartData.tank1.shift();
         chartData.tank2.shift();
@@ -207,58 +194,6 @@ function addAlertToList(alert) {
 // ============================================================
 // API 호출 함수
 // ============================================================
-
-async function startMonitoring() {
-    try {
-        const response = await fetch('/api/start_monitoring', {
-            method: 'POST'
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            console.log('✅ 모니터링 시작:', data.message);
-            document.getElementById('monitoring-status').textContent = '실행 중';
-            document.getElementById('monitoring-status').className = 'badge bg-success';
-            
-            // 버튼 전환
-            document.getElementById('btn-start-monitoring').classList.add('d-none');
-            document.getElementById('btn-stop-monitoring').classList.remove('d-none');
-        } else {
-            console.error('❌ 모니터링 시작 실패:', data.error);
-            alert('모니터링 시작 실패: ' + data.error);
-        }
-    } catch (error) {
-        console.error('❌ 오류:', error);
-        alert('오류 발생: ' + error.message);
-    }
-}
-
-async function stopMonitoring() {
-    try {
-        const response = await fetch('/api/stop_monitoring', {
-            method: 'POST'
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            console.log('⏹️  모니터링 중지:', data.message);
-            document.getElementById('monitoring-status').textContent = '중지됨';
-            document.getElementById('monitoring-status').className = 'badge bg-secondary';
-            
-            // 버튼 전환
-            document.getElementById('btn-start-monitoring').classList.remove('d-none');
-            document.getElementById('btn-stop-monitoring').classList.add('d-none');
-        } else {
-            console.error('❌ 모니터링 중지 실패:', data.error);
-            alert('모니터링 중지 실패: ' + data.error);
-        }
-    } catch (error) {
-        console.error('❌ 오류:', error);
-        alert('오류 발생: ' + error.message);
-    }
-}
 
 async function loadAlerts() {
     try {
@@ -351,13 +286,10 @@ function initChart() {
         }
     });
 }
-
 // ============================================================
 // 이벤트 리스너
 // ============================================================
 
-document.getElementById('btn-start-monitoring').addEventListener('click', startMonitoring);
-document.getElementById('btn-stop-monitoring').addEventListener('click', stopMonitoring);
 
 // ============================================================
 // 초기화

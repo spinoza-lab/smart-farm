@@ -46,7 +46,6 @@ cached_sensor_data = {
     'sensor_type': 'voltage'
 }
 
-
 def periodic_data_sender():
     """주기적으로 센서 데이터를 가져와서 웹으로 전송"""
     global monitoring_active
@@ -59,7 +58,7 @@ def periodic_data_sender():
                 # ✅ 직접 샘플링 (캘리브레이션 즉시 반영!)
                 status = sensor_monitor._collect_sensor_data()
                 
-                print(f"🔄 [SENDER] 샘플링 완료: 탱크1={status['tank1_level']:.1f}%, 탱크2={status['tank2_level']:.1f}%")
+                # print(f"🔄 [SENDER] 샘플링 완료: 탱크1={status['tank1_level']:.1f}%, 탱크2={status['tank2_level']:.1f}%")  # 디버그용
                 
                 # 전역 캐시 업데이트
                 global cached_sensor_data
@@ -72,9 +71,9 @@ def periodic_data_sender():
                 })
                 
                 # 디버깅: status 확인
-                print(f"🔍 [DEBUG] status 전체: {status}")
-                print(f"🔍 [DEBUG] status['timestamp'] 타입: {type(status['timestamp'])}")
-                print(f"🔍 [DEBUG] status['timestamp'] 값: {status['timestamp']}")
+                # print(f"🔍 [DEBUG] status 전체: {status}")  # 디버그용
+                # print(f"🔍 [DEBUG] status['timestamp'] 타입: {type(status['timestamp'])}")  # 디버그용
+                # print(f"🔍 [DEBUG] status['timestamp'] 값: {status['timestamp']}")  # 디버그용
                 
                 # ✅ timestamp 타입 체크 (핵심 수정 1)
                 timestamp_obj = status['timestamp']
@@ -117,7 +116,7 @@ def periodic_data_sender():
                     'voltages': [round(v, 3) for v in status['voltages']]
                 })
                 
-                print(f"📡 웹으로 데이터 전송: 탱크1={status['tank1_level']:.1f}%, 탱크2={status['tank2_level']:.1f}%")
+                # print(f"📡 웹으로 데이터 전송: 탱크1={status['tank1_level']:.1f}%, 탱크2={status['tank2_level']:.1f}%")  # 디버그용
         
         except Exception as e:
             print(f"❌ 주기적 데이터 전송 오류: {e}")
@@ -128,7 +127,6 @@ def periodic_data_sender():
         time.sleep(10)
     
     print("⏹️  periodic_data_sender 스레드 종료")
-
 
 def init_monitoring_system():
     """모니터링 시스템 초기화"""
@@ -189,7 +187,6 @@ def init_monitoring_system():
         traceback.print_exc()
         return False
 
-
 # ============================================================
 # 웹 라우트
 # ============================================================
@@ -198,7 +195,6 @@ def init_monitoring_system():
 def index():
     """메인 대시보드 페이지"""
     return render_template('index.html')
-
 
 @app.route('/api/status')
 def get_status():
@@ -253,10 +249,9 @@ def get_status():
             })
         
         return jsonify(status)
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/api/start_monitoring', methods=['POST'])
 def start_monitoring():
@@ -289,7 +284,6 @@ def start_monitoring():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/api/stop_monitoring', methods=['POST'])
 def stop_monitoring():
     """모니터링 중지"""
@@ -312,7 +306,6 @@ def stop_monitoring():
     except Exception as e:
         print(f"❌ 모니터링 중지 실패: {e}")
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/api/alerts')
 def get_alerts():
@@ -344,7 +337,6 @@ def get_alerts():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/api/data_history')
 def get_data_history():
     """센서 데이터 히스토리 조회"""
@@ -370,7 +362,6 @@ def get_data_history():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/api/statistics')
 def get_statistics():
@@ -406,7 +397,6 @@ def get_statistics():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
 # ============================================================
 # SocketIO 이벤트
 # ============================================================
@@ -414,15 +404,13 @@ def get_statistics():
 @socketio.on('connect')
 def handle_connect():
     """클라이언트 연결"""
-    print(f"🔌 클라이언트 연결: {request.sid}")
+    
     emit('connected', {'message': '서버에 연결되었습니다'})
-
 
 @socketio.on('disconnect')
 def handle_disconnect():
     """클라이언트 연결 해제"""
-    print(f"🔌 클라이언트 연결 해제: {request.sid}")
-
+    
 
 @socketio.on('request_status')
 def handle_request_status():
@@ -444,7 +432,6 @@ def handle_request_status():
         'voltages': [round(v, 3) for v in cached_sensor_data.get('voltages', [0, 0, 0, 0])]
     })
 
-
 # ============================================================
 # 메인 실행
 # ============================================================
@@ -457,7 +444,6 @@ def handle_request_status():
 def settings():
     """설정 페이지"""
     return render_template('settings.html')
-
 
 # ============================================================
 # 센서 캘리브레이션 API (Stage 3.5 추가)
@@ -495,8 +481,6 @@ def get_calibration():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
-
 def validate_voltage(value, field_name):
     """전압 입력값 검증 (0~5V)"""
     try:
@@ -511,7 +495,7 @@ def validate_voltage(value, field_name):
 def save_calibration():
     """캘리브레이션 설정 저장"""
     try:
-        print("🔵 /api/calibration POST 요청 받음")
+        # print("🔵 /api/calibration POST 요청 받음")  # 디버그용
         import json
         from datetime import datetime
         
@@ -555,9 +539,9 @@ def save_calibration():
         
         # ✅ 센서 모니터에 새 캘리브레이션 적용
         global sensor_monitor, cached_sensor_data
-        print(f"🔵 load_calibration 호출: {config_path}")
+        # print(f"🔵 load_calibration 호출: {config_path}")  # 디버그용
         sensor_monitor.load_calibration(config_path)
-        print("🔵 load_calibration 완료")
+        # print("🔵 load_calibration 완료")  # 디버그용
         
         # 캐시 초기화 및 즉시 새 데이터 샘플링
         print("🔄 캘리브레이션 변경 후 즉시 샘플링...")
@@ -580,7 +564,6 @@ def save_calibration():
             'success': False,
             'error': str(e)
         }), 500
-
 
 @app.route('/api/calibration/current', methods=['GET'])
 def get_current_sensor_values():
@@ -622,7 +605,6 @@ def get_current_sensor_values():
             'error': str(e)
         }), 500
 
-
 # ============================================================
 # 호스건 제어 API (Stage 3.5 추가 - Mock)
 # ============================================================
@@ -635,7 +617,6 @@ def get_hose_gun_status():
     return jsonify({
         'active': hose_gun_active
     })
-
 
 @app.route('/api/hose-gun/activate', methods=['POST'])
 def activate_hose_gun():
@@ -655,7 +636,6 @@ def activate_hose_gun():
             'error': str(e)
         }), 500
 
-
 @app.route('/api/hose-gun/deactivate', methods=['POST'])
 def deactivate_hose_gun():
     """호스건 비활성화 (Mock)"""
@@ -673,7 +653,6 @@ def deactivate_hose_gun():
             'success': False,
             'error': str(e)
         }), 500
-
 
 if __name__ == '__main__':
     print("=" * 60)

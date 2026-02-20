@@ -185,14 +185,9 @@ class SensorMonitor:
         # 다중 샘플링
         voltage_samples = []
         
-        print(f"\n🔄 샘플링 시작 ({self.sample_count}회, {self.sample_interval:.1f}초 간격)...")
-        
         for i in range(self.sample_count):
             voltages = self.sensor_reader.read_all_channels()
             voltage_samples.append(voltages)
-            print(f"   샘플 {i+1}/{self.sample_count}: "
-                  f"CH0={voltages[0]:.3f}V CH1={voltages[1]:.3f}V "
-                  f"CH2={voltages[2]:.3f}V CH3={voltages[3]:.3f}V")
             
             # 마지막 샘플 후에는 대기 안 함
             if i < self.sample_count - 1:
@@ -217,9 +212,6 @@ class SensorMonitor:
             avg = sum(trimmed) / len(trimmed)
             filtered_voltages.append(round(avg, 3))
         
-        print(f"✅ 필터링 완료: "
-              f"CH0={filtered_voltages[0]:.3f}V CH1={filtered_voltages[1]:.3f}V "
-              f"CH2={filtered_voltages[2]:.3f}V CH3={filtered_voltages[3]:.3f}V")
         
         # 타임스탬프
         timestamp = self.rtc.get_datetime_string('%Y-%m-%d %H:%M:%S')
@@ -250,8 +242,6 @@ class SensorMonitor:
             tank2_level = 100.0
         else:
             tank2_level = round(((tank2_voltage - tank2_empty) / (tank2_full - tank2_empty)) * 100, 1)
-        
-        
         
         data = {
             'timestamp': timestamp,
@@ -348,12 +338,12 @@ class SensorMonitor:
         """캘리브레이션 설정 다시 로드"""
         try:
             import json
-            print(f"🔍 캘리브레이션 파일 읽기 시작: {config_path}")
+            # print(f"🔍 캘리브레이션 파일 읽기 시작: {config_path}")  # 디버그용
             
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             
-            print(f"🔍 JSON 파싱 완료: {list(config.keys())}")
+            # print(f"🔍 JSON 파싱 완료: {list(config.keys())}")  # 디버그용
             
             self.sensor_type = config.get('sensor_type', 'voltage')
             
@@ -370,7 +360,6 @@ class SensorMonitor:
             print(f"   탱크1: {self.tank1_empty:.3f}V ~ {self.tank1_full:.3f}V")
             print(f"   탱크2: {self.tank2_empty:.3f}V ~ {self.tank2_full:.3f}V")
             
-            
             return True
             
         except FileNotFoundError as e:
@@ -385,7 +374,6 @@ class SensorMonitor:
             traceback.print_exc()
             return False
     
-
     def get_current_status(self) -> Dict:
         """
         현재 센서 상태 조회
@@ -494,9 +482,9 @@ def test_sensor_monitor():
     print("="*60)
     history = monitor.get_history(limit=2)
     for i, data in enumerate(history, 1):
-        print(f"기록 {i}: {data['timestamp']} - "
-              f"탱크1={data['tank1_level']:.1f}%, "
-              f"탱크2={data['tank2_level']:.1f}%")
+        # print(f"기록 {i}: {data['timestamp']} - "  # 디버그용
+        # f"탱크1={data['tank1_level']:.1f}%, "  # 디버그용
+        pass  # 디버그 print 제거됨
     
     print("\n" + "="*60)
     print("📋 테스트 4: 평균 수위")
