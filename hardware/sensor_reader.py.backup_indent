@@ -179,18 +179,24 @@ class SensorReader:
             voltage = self.read_sensor('water_level_2')
             tank_key = 'tank2_nutrient'
         else:
-            raise ValueError(f"유효하지 않은 탱크 번호: {tank_num}")
+            print(f"❌ 잘못된 탱크 번호: {tank_num}")
+            return None
         
-        # 캘리브레이션 값 가져오기
-        empty_value = self.calibration.get(tank_key, {}).get('empty_value', 0.5)
-        full_value = self.calibration.get(tank_key, {}).get('full_value', 4.5)
+        if voltage is None:
+            return None
+        
+        # 캘리브레이션 정보 가져오기
+        tank_cal = self.calibration.get(tank_key, {})
+        empty_value = tank_cal.get('empty_value', 0.5)
+        full_value = tank_cal.get('full_value', 4.5)
+        
         sensor_type = self.calibration.get('sensor_type', 'voltage')
         
-        # 전압 센서 (0~5V)
-        percent = self._voltage_to_percent(voltage, empty_value, full_value)
+        # 전압 센서 (0-5V)
+            percent = self._voltage_to_percent(voltage, empty_value, full_value)
         
-        return max(0.0, min(100.0, percent))
-
+        return percent
+    
     def read_all_channels(self):
         """
         모든 채널 읽기

@@ -143,7 +143,7 @@ function updateCurrentValues() {
                 currentValues.tank1 = data.tank1_value;
                 currentValues.tank2 = data.tank2_value;
                 
-                const unit = data.sensor_type === 'voltage' ? ' V' : ' mA';
+                const unit = ' V';
                 
                 document.getElementById('tank1CurrentValue').textContent = 
                     currentValues.tank1.toFixed(3) + unit;
@@ -166,7 +166,7 @@ function loadCalibration() {
         .then(response => response.json())
         .then(data => {
             if (data) {
-                document.getElementById('sensorType').value = data.sensor_type || 'voltage';
+                // sensor_type은 'voltage'로 고정됨
                 
                 if (data.tank1_water) {
                     document.getElementById('tank1Empty').value = 
@@ -217,27 +217,19 @@ function setCurrentAsFull(tank) {
     showAlert(`Tank ${tank} 만수 값을 ${value.toFixed(3)}로 설정했습니다.`, 'success');
 }
 
-function saveSensorType() {
-    const sensorType = document.getElementById('sensorType').value;
-    
-    fetch('/api/calibration', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({sensor_type: sensorType, update_type_only: true})
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showAlert('센서 타입이 저장되었습니다.', 'success');
-            updateCurrentValues();
-        } else {
-            showAlert('센서 타입 저장 실패: ' + (data.error || '알 수 없는 오류'), 'danger');
-        }
-    })
-    .catch(error => {
-        console.error('센서 타입 저장 오류:', error);
-        showAlert('센서 타입 저장 중 오류가 발생했습니다.', 'danger');
-    });
+
+// 전압 입력값 검증 (0~5V)
+function validateVoltage(value, fieldName) {
+    const num = parseFloat(value);
+    if (isNaN(num)) {
+        alert(`${fieldName}는 숫자여야 합니다`);
+        return false;
+    }
+    if (num < 0 || num > 5.0) {
+        alert(`${fieldName}는 0V ~ 5.0V 범위여야 합니다 (현재: ${num}V)`);
+        return false;
+    }
+    return true;
 }
 
 function saveCalibration() {
@@ -249,9 +241,13 @@ function saveCalibration() {
     };
     
     const tank1Empty = roundTo3Decimals(document.getElementById('tank1Empty').value);
+    if (!validateVoltage(tank1Empty, "Tank 1 Empty")) return;
     const tank1Full = roundTo3Decimals(document.getElementById('tank1Full').value);
+    if (!validateVoltage(tank1Full, "Tank 1 Full")) return;
     const tank2Empty = roundTo3Decimals(document.getElementById('tank2Empty').value);
+    if (!validateVoltage(tank2Empty, "Tank 2 Empty")) return;
     const tank2Full = roundTo3Decimals(document.getElementById('tank2Full').value);
+    if (!validateVoltage(tank2Full, "Tank 2 Full")) return;
     
     if (tank1Empty >= tank1Full) {
         showAlert('물탱크: 공탱크 값이 만수 값보다 작아야 합니다.', 'danger');
@@ -263,10 +259,10 @@ function saveCalibration() {
         return;
     }
     
-    const sensorType = document.getElementById('sensorType').value;
+    
     
     const calibrationData = {
-        sensor_type: sensorType,
+        sensor_type: 'voltage',
         tank1_water: {empty_value: tank1Empty, full_value: tank1Full},
         tank2_nutrient: {empty_value: tank2Empty, full_value: tank2Full}
     };

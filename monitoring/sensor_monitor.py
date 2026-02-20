@@ -21,7 +21,6 @@ sys.path.append('/home/pi/smart_farm')
 from hardware.sensor_reader import SensorReader
 from hardware.rtc_manager import RTCManager
 
-
 class SensorMonitor:
     """센서 실시간 모니터링 클래스"""
     
@@ -252,7 +251,7 @@ class SensorMonitor:
         else:
             tank2_level = round(((tank2_voltage - tank2_empty) / (tank2_full - tank2_empty)) * 100, 1)
         
-        print(f"🔍 [CALC] 탱크2: ({tank2_voltage:.3f}V - {tank2_empty:.3f}V) / ({tank2_full:.3f}V - {tank2_empty:.3f}V) = {tank2_level:.1f}%")
+        
         
         data = {
             'timestamp': timestamp,
@@ -370,7 +369,7 @@ class SensorMonitor:
             print(f"   센서 타입: {self.sensor_type}")
             print(f"   탱크1: {self.tank1_empty:.3f}V ~ {self.tank1_full:.3f}V")
             print(f"   탱크2: {self.tank2_empty:.3f}V ~ {self.tank2_full:.3f}V")
-            print(f"🔍 [DEBUG] 실제 저장된 값: tank2_empty={self.tank2_empty}, tank2_full={self.tank2_full}")
+            
             
             return True
             
@@ -455,7 +454,6 @@ class SensorMonitor:
         self.alert_callbacks.append(callback)
         print(f"✅ 알림 콜백 추가됨 (총 {len(self.alert_callbacks)}개)")
 
-
 def test_sensor_monitor():
     """테스트 함수"""
     print("\n" + "="*60)
@@ -511,7 +509,6 @@ def test_sensor_monitor():
     print("\n" + "="*60)
     print("✅ 모든 테스트 완료!")
     print("="*60)
-
 
 if __name__ == '__main__':
     test_sensor_monitor()

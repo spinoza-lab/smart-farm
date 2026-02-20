@@ -496,6 +496,17 @@ def get_calibration():
         return jsonify({'error': str(e)}), 500
 
 
+
+def validate_voltage(value, field_name):
+    """전압 입력값 검증 (0~5V)"""
+    try:
+        num = float(value)
+        if not (0 <= num <= 5.0):
+            raise ValueError(f"{field_name}는 0V ~ 5.0V 범위여야 합니다 (입력값: {num}V)")
+        return round(num, 3)
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"{field_name}는 유효한 숫자가 아닙니다")
+
 @app.route('/api/calibration', methods=['POST'])
 def save_calibration():
     """캘리브레이션 설정 저장"""
@@ -528,13 +539,13 @@ def save_calibration():
                 'sensor_type': data.get('sensor_type', 'voltage'),
                 'last_updated': now,
                 'tank1_water': {
-                    'empty_value': round(float(data['tank1_water']['empty_value']), 3),
-                    'full_value': round(float(data['tank1_water']['full_value']), 3),
+                    'empty_value': validate_voltage(data['tank1_water']['empty_value'], 'Tank 1 Empty'),
+                    'full_value': validate_voltage(data['tank1_water']['full_value'], 'Tank 1 Full'),
                     'calibrated_at': now
                 },
                 'tank2_nutrient': {
-                    'empty_value': round(float(data['tank2_nutrient']['empty_value']), 3),
-                    'full_value': round(float(data['tank2_nutrient']['full_value']), 3),
+                    'empty_value': validate_voltage(data['tank2_nutrient']['empty_value'], 'Tank 2 Empty'),
+                    'full_value': validate_voltage(data['tank2_nutrient']['full_value'], 'Tank 2 Full'),
                     'calibrated_at': now
                 }
             }
