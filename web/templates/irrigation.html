@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>관수 제어 - 스마트 관수 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        :root{--font-size-base:18px;--font-size-title:24px;--font-size-small:14px;}
+        body{font-size:var(--font-size-base);background-color:#f8f9fa;}
+        body.font-xs{--font-size-base:14px;--font-size-title:18px;--font-size-small:11px;}
+        body.font-small{--font-size-base:16px;--font-size-title:22px;--font-size-small:13px;}
+        body.font-medium{--font-size-base:20px;--font-size-title:26px;--font-size-small:16px;}
+        body.font-large{--font-size-base:24px;--font-size-title:32px;--font-size-small:20px;}
+        body.font-xl{--font-size-base:28px;--font-size-title:38px;--font-size-small:24px;}
+        body.font-xxl{--font-size-base:32px;--font-size-title:44px;--font-size-small:28px;}
+        .navbar{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);}
+        .card{margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1);}
+        .card-header{background-color:#f8f9fa;border-bottom:2px solid #667eea;font-size:var(--font-size-title);font-weight:bold;}
+        .nav-tabs .nav-link{font-size:var(--font-size-base);padding:15px 25px;font-weight:600;}
+        .nav-tabs .nav-link.active{background-color:#667eea;color:white;}
+        .font-size-controls{position:fixed;top:70px;right:20px;z-index:1000;display:flex;gap:8px;background:white;padding:8px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.2);}
+        .btn-font-size{width:55px;height:55px;padding:0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+        @media(max-width:768px){.font-size-controls{top:auto;bottom:20px;right:20px;}}
+        .zone-card{height:100%;transition:transform 0.15s,box-shadow 0.15s;}
+        .zone-card:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,0.12);}
+        .zone-card .card-header{padding:8px 12px;font-size:var(--font-size-small);}
+        .zone-card.irrigating{border:2px solid #2196f3;}
+        .zone-card.dry{border:2px solid #f44336;}
+        .gauge-wrap{position:relative;width:86px;height:86px;margin:4px auto 6px;}
+        .gauge-wrap canvas{position:absolute;top:0;left:0;}
+        .gauge-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;line-height:1.1;}
+        .gauge-center .val{font-size:1rem;font-weight:700;color:#333;}
+        .gauge-center .unit{font-size:0.6rem;color:#888;}
+        .z-badge{font-size:0.65rem;padding:2px 7px;border-radius:10px;font-weight:600;}
+        .z-irrigating{background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;}
+        .z-dry{background:#ffebee;color:#b71c1c;border:1px solid #ef9a9a;}
+        .z-ok{background:#e8f5e9;color:#1b5e20;border:1px solid #a5d6a7;}
+        .z-offline{background:#f5f5f5;color:#757575;border:1px solid #bdbdbd;}
+        .sensor-row{display:flex;justify-content:space-around;font-size:0.7rem;color:#666;margin-bottom:4px;}
+        .threshold-row{display:flex;align-items:center;gap:4px;font-size:0.7rem;color:#888;margin-bottom:6px;}
+        .threshold-row .val{font-weight:700;color:#555;}
+        .threshold-row button{background:none;border:none;padding:0 2px;font-size:0.7rem;color:#999;cursor:pointer;}
+        .threshold-row button:hover{color:#667eea;}
+        .btn-irrigate{font-size:0.75rem;padding:4px 10px;border-radius:20px;}
+        .mode-panel{display:flex;gap:8px;flex-wrap:wrap;}
+        .mode-btn{flex:1;min-width:90px;padding:12px 8px;font-size:var(--font-size-small);font-weight:600;}
+        .status-val{font-size:var(--font-size-title);font-weight:bold;color:#667eea;padding:10px;background:#f8f9fa;border-radius:8px;text-align:center;}
+        .irr-progress{height:6px;border-radius:4px;background:#dee2e6;}
+        .irr-progress-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#667eea,#2196f3);transition:width 0.8s linear;}
+        .history-scroll{max-height:300px;overflow-y:auto;}
+        .history-table th{font-size:var(--font-size-small);color:#888;font-weight:600;}
+        .history-table td{font-size:var(--font-size-small);vertical-align:middle;}
+        .conn-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;}
+        .conn-on{background:#4caf50;animation:blink 2s infinite;}
+        .conn-off{background:#bdbdbd;}
+        @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
+        .irr-toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#323232;color:#fff;padding:10px 20px;border-radius:6px;font-size:var(--font-size-small);z-index:9999;animation:fadeUp 0.3s ease;max-width:90vw;}
+        @keyframes fadeUp{from{opacity:0;transform:translateX(-50%) translateY(10px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/"><i class="bi bi-droplet-fill"></i> 스마트 관수 시스템</a>
+    <div>
+      <a href="/" class="btn btn-light me-2"><i class="bi bi-speedometer2"></i> 대시보드</a>
+      <a href="/irrigation" class="btn btn-warning me-2"><i class="bi bi-water"></i> 관수 제어</a>
+      <a href="/settings" class="btn btn-outline-light"><i class="bi bi-gear-fill"></i> 설정</a>
+    </div>
+  </div>
+</nav>
+<div class="font-size-controls">
+  <button class="btn btn-outline-secondary btn-font-size" onclick="decreaseFontSize()"><i class="bi bi-dash-lg"></i></button>
+  <button class="btn btn-primary btn-font-size" onclick="resetFontSize()"><i class="bi bi-circle-fill"></i></button>
+  <button class="btn btn-outline-secondary btn-font-size" onclick="increaseFontSize()"><i class="bi bi-plus-lg"></i></button>
+</div>
+<div class="container-fluid mt-4">
+  <h1 class="mb-4"><i class="bi bi-water"></i> 관수 제어</h1>
+  <ul class="nav nav-tabs mb-4" id="irrigationTabs" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#control" type="button"><i class="bi bi-toggles"></i> 제어 패널</button></li>
+    <li class="nav-item"><button class="nav-link" id="zones-tab" data-bs-toggle="tab" data-bs-target="#zones" type="button"><i class="bi bi-grid-3x3-gap"></i> 구역별 제어</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#history" type="button"><i class="bi bi-clock-history"></i> 관수 이력</button></li>
+  </ul>
+  <div class="tab-content">
+    <!-- 탭1: 제어 패널 -->
+    <div class="tab-pane fade show active" id="control" role="tabpanel">
+      <div class="row">
+        <div class="col-lg-5">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-activity"></i> 시스템 상태</div>
+            <div class="card-body">
+              <div class="mb-3 p-3 rounded" id="mode-banner" style="background:#fff8e1;border:1px solid #ffe082;">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="bi bi-hand-index fs-4" id="mode-icon" style="color:#f57f17;"></i>
+                  <div>
+                    <div class="fw-bold" id="mode-text" style="color:#e65100;">수동 모드</div>
+                    <small class="text-muted">관수 방식을 선택하세요</small>
+                  </div>
+                  <span class="ms-auto badge bg-secondary" id="irr-status-badge">대기 중</span>
+                </div>
+              </div>
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <div class="status-val" style="font-size:var(--font-size-base);">
+                    <small class="d-block text-muted" style="font-size:var(--font-size-small);">현재 관수 구역</small>
+                    <span id="current-zone-disp">—</span>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="status-val" style="font-size:var(--font-size-base);">
+                    <small class="d-block text-muted" style="font-size:var(--font-size-small);">오늘 관수 횟수</small>
+                    <span id="today-count-disp">0 회</span>
+                  </div>
+                </div>
+              </div>
+              <div id="progress-panel" class="d-none mb-3">
+                <div class="d-flex justify-content-between mb-1" style="font-size:var(--font-size-small);">
+                  <span>관수 진행: <strong id="prog-zone-lbl" class="text-primary"></strong></span>
+                  <span id="prog-time-lbl" class="text-primary"></span>
+                </div>
+                <div class="irr-progress"><div class="irr-progress-fill" id="prog-fill" style="width:0%"></div></div>
+              </div>
+              <button class="btn btn-danger w-100 btn-lg" onclick="emergencyStop()">
+                <i class="bi bi-stop-circle-fill me-2"></i>긴급 정지
+              </button>
+              <div class="mt-3" style="font-size:var(--font-size-small);">
+                <span class="conn-dot conn-off" id="conn-dot"></span>
+                <span id="conn-text" class="text-muted">서버 연결 중...</span>
+                <span class="float-end text-muted" id="last-update-disp"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-toggles"></i> 모드 선택</div>
+            <div class="card-body">
+              <div class="mode-panel mb-3">
+                <button class="btn btn-warning mode-btn" id="btn-manual" onclick="setMode('manual')">
+                  <i class="bi bi-hand-index d-block fs-3 mb-1"></i>수동
+                </button>
+                <button class="btn btn-outline-success mode-btn" id="btn-auto" onclick="setMode('auto')">
+                  <i class="bi bi-robot d-block fs-3 mb-1"></i>자동
+                </button>
+                <button class="btn btn-outline-info mode-btn" id="btn-schedule" onclick="setMode('schedule')">
+                  <i class="bi bi-calendar-check d-block fs-3 mb-1"></i>스케줄
+                </button>
+              </div>
+              <div class="alert alert-info" style="font-size:var(--font-size-small);">
+                <i class="bi bi-info-circle me-1"></i>
+                <strong>수동:</strong> 구역별 제어 탭에서 직접 관수 버튼 클릭<br>
+                <strong>자동:</strong> 토양 수분이 임계값 미만이면 자동 관수 실행<br>
+                <strong>스케줄:</strong> 설정한 시간대에 자동 관수 (추후 지원)
+              </div>
+              <div class="row g-2 align-items-center mb-3">
+                <div class="col-auto"><label class="form-label mb-0 fw-bold">기본 관수 시간 (초):</label></div>
+                <div class="col-auto"><input type="number" id="global-duration" class="form-control" value="30" min="5" max="600" style="width:100px;"></div>
+              </div>
+              <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-outline-primary" onclick="readAllSensors()"><i class="bi bi-broadcast me-1"></i>전체 센서 읽기</button>
+                <button class="btn btn-outline-secondary" onclick="refreshStatus()"><i class="bi bi-arrow-clockwise me-1"></i>상태 갱신</button>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><i class="bi bi-bar-chart-line"></i> 구역별 토양 수분 현황</div>
+            <div class="card-body"><canvas id="moisture-chart" height="160"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 탭2: 구역별 제어 -->
+    <div class="tab-pane fade" id="zones" role="tabpanel">
+      <div class="row g-2" id="zone-cards-container"></div>
+    </div>
+    <!-- 탭3: 관수 이력 -->
+    <div class="tab-pane fade" id="history" role="tabpanel">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-clock-history"></i> 관수 이력</span>
+          <button class="btn btn-outline-secondary btn-sm" onclick="loadHistory()"><i class="bi bi-arrow-clockwise"></i> 새로고침</button>
+        </div>
+        <div class="card-body p-0">
+          <div class="history-scroll">
+            <table class="table table-hover history-table mb-0">
+              <thead class="table-light">
+                <tr><th class="ps-3">시간</th><th>구역</th><th>관수(초)</th><th>트리거</th><th>결과</th></tr>
+              </thead>
+              <tbody id="history-tbody"><tr><td colspan="5" class="text-center text-muted py-4">이력 없음</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- 임계값 모달 -->
+<div class="modal fade" id="thresholdModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-sliders me-2"></i>임계값 설정 – <span id="modal-zone-label"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="modal-zone-id">
+        <p class="text-muted" style="font-size:var(--font-size-small);">토양 수분이 이 임계값 미만이면 자동 모드에서 관수가 실행됩니다.</p>
+        <label class="form-label fw-bold">수분 임계값 (%)</label>
+        <div class="d-flex align-items-center gap-3">
+          <input type="range" id="modal-slider" class="form-range flex-grow-1" min="10" max="80" step="5" value="40" oninput="document.getElementById('modal-val').textContent=this.value+'%'">
+          <span id="modal-val" class="fw-bold text-primary" style="min-width:45px;">40%</span>
+        </div>
+        <div class="row g-2 mt-2 text-center" style="font-size:var(--font-size-small);">
+          <div class="col-4"><div class="p-2 rounded" style="background:#ffebee;color:#c62828;">10~20% – 건조</div></div>
+          <div class="col-4"><div class="p-2 rounded" style="background:#fff3e0;color:#e65100;">30~50% – 권장</div></div>
+          <div class="col-4"><div class="p-2 rounded" style="background:#e8f5e9;color:#2e7d32;">60~80% – 충분</div></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-success" onclick="saveThreshold()"><i class="bi bi-check2 me-1"></i>저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/irrigation.js') }}?v=1"></script>
+<script>
+  let currentFontIndex=2;
+  function setFontSize(s){document.body.className=document.body.className.replace(/font-\w+/g,'');if(s!=='normal')document.body.classList.add('font-'+s);localStorage.setItem('irrigationFontSize',s);currentFontIndex=['xs','small','normal','medium','large','xl','xxl'].indexOf(s);}
+  function increaseFontSize(){const s=['xs','small','normal','medium','large','xl','xxl'];currentFontIndex=Math.min(currentFontIndex+1,s.length-1);setFontSize(s[currentFontIndex]);}
+  function decreaseFontSize(){const s=['xs','small','normal','medium','large','xl','xxl'];currentFontIndex=Math.max(currentFontIndex-1,0);setFontSize(s[currentFontIndex]);}
+  function resetFontSize(){currentFontIndex=2;setFontSize('normal');}
+  document.addEventListener('DOMContentLoaded',()=>{const saved=localStorage.getItem('irrigationFontSize')||'normal';setFontSize(saved);});
+</script>
+</body>
+</html>

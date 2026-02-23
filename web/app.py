@@ -462,6 +462,12 @@ def handle_request_status():
 # 설정 페이지 라우트 (Stage 3.5 추가)
 # ============================================================
 
+
+@app.route('/irrigation')
+def irrigation():
+    """관수 제어 페이지"""
+    return render_template('irrigation.html')
+
 @app.route('/settings')
 def settings():
     """설정 페이지"""
