@@ -21,6 +21,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from monitoring.sensor_monitor import SensorMonitor
 from hardware.relay_controller import RelayController
+from hardware.modbus_soil_sensor import SoilSensorManager
+from irrigation.auto_controller import AutoIrrigationController
 from monitoring.data_logger import DataLogger
 from monitoring.alert_manager import AlertManager, AlertLevel
 
@@ -36,6 +38,8 @@ sensor_monitor = None
 data_logger = None
 alert_manager = None
 relay_controller = None
+soil_sensor_manager = None
+auto_irrigation = None
 monitoring_active = False
 monitoring_thread = None
 
@@ -132,7 +136,7 @@ def periodic_data_sender():
 
 def init_monitoring_system():
     """모니터링 시스템 초기화"""
-    global sensor_monitor, data_logger, alert_manager, relay_controller
+    global sensor_monitor, data_logger, alert_manager, relay_controller, soil_sensor_manager, auto_irrigation
     
     try:
         # SensorMonitor 초기화
@@ -173,6 +177,19 @@ def init_monitoring_system():
         alert_manager.add_callback(alert_callback)
         # RelayController 초기화
         relay_controller = RelayController()
+
+        # 토양 센서 & 자동 관수 초기화
+        try:
+            soil_sensor_manager = SoilSensorManager()
+            auto_irrigation = AutoIrrigationController(
+                sensor_manager=soil_sensor_manager,
+                relay_controller=relay_controller
+            )
+            print("✅ 토양 센서 & 자동 관수 초기화 완료")
+        except Exception as e:
+            print(f"⚠️  토양 센서 초기화 실패 (센서 미연결?): {e}")
+            soil_sensor_manager = None
+            auto_irrigation = None
 
         
         print("✅ 모니터링 시스템 초기화 완료")
@@ -673,6 +690,121 @@ def deactivate_hose_gun():
             'success': False,
             'error': str(e)
         }), 500
+
+
+# ============================================================
+# 🌱 자동 관수 API
+# ============================================================
+
+@app.route('/api/irrigation/status')
+def get_irrigation_status():
+    """자동 관수 전체 상태 조회"""
+    global auto_irrigation
+    if auto_irrigation is None:
+        return jsonify({'success': False, 'error': '자동 관수 시스템 초기화 안됨'}), 503
+    return jsonify({'success': True, 'data': auto_irrigation.get_status()})
+
+
+@app.route('/api/irrigation/mode', methods=['POST'])
+def set_irrigation_mode():
+    """관수 모드 변경: auto / manual / schedule"""
+    global auto_irrigation
+    if auto_irrigation is None:
+        return jsonify({'success': False, 'error': '자동 관수 시스템 없음'}), 503
+    mode = request.json.get('mode')
+    ok, msg = auto_irrigation.set_mode(mode)
+    return jsonify({'success': ok, 'message': msg})
+
+
+@app.route('/api/irrigation/start', methods=['POST'])
+def start_irrigation():
+    """수동 관수 시작: zone_id, duration(초) 지정"""
+    global auto_irrigation
+    if auto_irrigation is None:
+        return jsonify({'success': False, 'error': '자동 관수 시스템 없음'}), 503
+    zone_id  = request.json.get('zone_id')
+    duration = request.json.get('duration', 300)
+    if not zone_id:
+        return jsonify({'success': False, 'error': 'zone_id 필요'}), 400
+    if auto_irrigation.is_irrigating:
+        return jsonify({'success': False,
+                        'error': f'이미 관수 중 (구역 {auto_irrigation.current_zone})'}), 409
+
+    def run():
+        auto_irrigation.irrigate_zone(int(zone_id), int(duration))
+
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({'success': True,
+                    'message': f'구역 {zone_id} 관수 시작 ({duration}초)'})
+
+
+@app.route('/api/irrigation/stop', methods=['POST'])
+def stop_irrigation():
+    """관수 긴급 정지"""
+    global auto_irrigation, relay_controller
+    try:
+        if relay_controller:
+            relay_controller.emergency_stop()
+        if auto_irrigation:
+            auto_irrigation.is_irrigating = False
+            auto_irrigation.current_zone  = None
+        return jsonify({'success': True, 'message': '관수 긴급 정지 완료'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/irrigation/sensors')
+def get_soil_sensors():
+    """토양 센서 전체 현황 조회"""
+    global auto_irrigation, soil_sensor_manager
+    if auto_irrigation is None:
+        return jsonify({'success': False, 'error': '자동 관수 시스템 없음'}), 503
+    # 최신 데이터 반환 (캐시)
+    data = auto_irrigation.get_sensor_data()
+    return jsonify({'success': True, 'data': data,
+                    'count': len(data)})
+
+
+@app.route('/api/irrigation/sensors/read', methods=['POST'])
+def refresh_soil_sensors():
+    """토양 센서 즉시 재측정"""
+    global soil_sensor_manager, auto_irrigation
+    if soil_sensor_manager is None:
+        return jsonify({'success': False, 'error': '센서 없음'}), 503
+    try:
+        results = soil_sensor_manager.read_all_zones()
+        if auto_irrigation:
+            auto_irrigation.last_sensor_data = results
+        return jsonify({'success': True, 'data': results})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/irrigation/threshold', methods=['POST'])
+def set_threshold():
+    """구역별 관수 임계값 설정"""
+    global auto_irrigation
+    if auto_irrigation is None:
+        return jsonify({'success': False, 'error': '자동 관수 시스템 없음'}), 503
+    zone_id   = request.json.get('zone_id')
+    threshold = request.json.get('threshold')
+    if zone_id is None or threshold is None:
+        return jsonify({'success': False, 'error': 'zone_id, threshold 필요'}), 400
+    auto_irrigation.zone_thresholds[int(zone_id)] = float(threshold)
+    return jsonify({'success': True,
+                    'message': f'구역 {zone_id} 임계값 → {threshold}%'})
+
+
+@app.route('/api/irrigation/history')
+def get_irrigation_history():
+    """관수 이력 조회"""
+    global auto_irrigation
+    if auto_irrigation is None:
+        return jsonify({'success': False, 'error': '자동 관수 시스템 없음'}), 503
+    limit = int(request.args.get('limit', 20))
+    history = auto_irrigation.irrigation_history[-limit:]
+    return jsonify({'success': True, 'data': list(reversed(history)),
+                    'total': len(auto_irrigation.irrigation_history)})
 
 if __name__ == '__main__':
     print("=" * 60)
