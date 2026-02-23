@@ -30,6 +30,7 @@ class AutoIrrigationController:
 
     CONFIG_PATH = '/home/pi/smart_farm/config/soil_sensors.json'
     LOG_PATH    = '/home/pi/smart_farm/logs/irrigation.log'
+    CSV_PATH    = '/home/pi/smart_farm/logs/irrigation_history.csv'
 
     def __init__(self, sensor_manager=None, relay_controller=None, config_path=None):
         self.config_path     = config_path or self.CONFIG_PATH
@@ -59,6 +60,8 @@ class AutoIrrigationController:
         print("✅ AutoIrrigationController 초기화 완료")
         print(f"   모드: {self.mode}")
         print(f"   체크 주기: {self.irrigation_cfg.get('check_interval', 600)}초")
+        self._init_irrigation_csv()
+        self._load_irrigation_history()
 
     # ──────────────────────────────────────
     # 설정 로드
@@ -243,7 +246,17 @@ class AutoIrrigationController:
             'duration':   duration,
             'trigger':    self.mode
         }
+        # 관수 전 수분 데이터 추가
+        moisture_before = ''
+        if zone_id in self.last_sensor_data:
+            m = self.last_sensor_data[zone_id]
+            if isinstance(m, dict):
+                moisture_before = m.get('moisture', '')
+        record['moisture_before'] = moisture_before
+        record['success'] = True
+
         self.irrigation_history.append(record)
+        self._save_to_csv(record)          # CSV 영구 저장
         if len(self.irrigation_history) > 200:
             self.irrigation_history = self.irrigation_history[-200:]
 
@@ -283,6 +296,47 @@ class AutoIrrigationController:
     # ──────────────────────────────────────
     # 로그 & 시뮬레이션
     # ──────────────────────────────────────
+    def _init_irrigation_csv(self):
+        """관수 이력 CSV 파일 초기화 (헤더 없으면 생성)"""
+        import csv
+        if not os.path.exists(self.CSV_PATH) or os.path.getsize(self.CSV_PATH) == 0:
+            with open(self.CSV_PATH, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(['timestamp', 'zone_id', 'duration_sec', 'trigger', 'moisture_before', 'success'])
+            print(f"✅ 관수 이력 CSV 생성: {self.CSV_PATH}")
+
+    def _load_irrigation_history(self):
+        """CSV에서 최근 200개 이력 로드 (재시작해도 유지)"""
+        import csv
+        if not os.path.exists(self.CSV_PATH):
+            return
+        try:
+            with open(self.CSV_PATH, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            self.irrigation_history = rows[-200:]
+            if self.irrigation_history:
+                print(f"✅ 관수 이력 {len(self.irrigation_history)}개 로드됨")
+        except Exception as e:
+            print(f"⚠️  관수 이력 로드 실패: {e}")
+
+    def _save_to_csv(self, record):
+        """관수 이력 1건을 CSV에 추가"""
+        import csv
+        try:
+            with open(self.CSV_PATH, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    record.get('start_time', ''),
+                    record.get('zone_id', ''),
+                    record.get('duration', ''),
+                    record.get('trigger', ''),
+                    record.get('moisture_before', ''),
+                    record.get('success', True)
+                ])
+        except Exception as e:
+            print(f"⚠️  관수 이력 CSV 저장 실패: {e}")
+
     def _log(self, message):
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         line = f"[{timestamp}] {message}\n"

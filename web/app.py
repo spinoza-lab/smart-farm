@@ -812,6 +812,149 @@ def get_irrigation_history():
     return jsonify({'success': True, 'data': list(reversed(history)),
                     'total': len(auto_irrigation.irrigation_history)})
 
+
+# ============================================================
+# 📥 CSV 다운로드 API
+# ============================================================
+
+@app.route('/api/download/irrigation-history')
+def download_irrigation_history():
+    """관수 이력 CSV 다운로드"""
+    import csv, io
+    from flask import Response
+
+    csv_path = '/home/pi/smart_farm/logs/irrigation_history.csv'
+
+    if not os.path.exists(csv_path):
+        return jsonify({'error': '관수 이력 파일 없음'}), 404
+
+    # 쿼리 파라미터: 날짜 필터 (선택)
+    date_from = request.args.get('from')  # YYYY-MM-DD
+    date_to   = request.args.get('to')
+
+    try:
+        rows = []
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if date_from and row.get('timestamp', '') < date_from:
+                    continue
+                if date_to and row.get('timestamp', '') > date_to + ' 23:59:59':
+                    continue
+                rows.append(row)
+
+        # CSV 문자열 생성
+        output = io.StringIO()
+        fieldnames = ['timestamp', 'zone_id', 'duration_sec', 'trigger', 'moisture_before', 'success']
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+        filename = f"irrigation_history_{datetime.now().strftime('%Y%m%d')}.csv"
+        return Response(
+            '﻿' + output.getvalue(),   # BOM: 엑셀 한글 깨짐 방지
+            mimetype='text/csv; charset=utf-8',
+            headers={'Content-Disposition': f'attachment; filename={filename}'}
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/download/sensor-data')
+def download_sensor_data():
+    """탱크 수위 센서 데이터 CSV 다운로드"""
+    import glob
+    from flask import Response
+
+    log_dir   = '/home/pi/smart_farm/logs'
+    date_from = request.args.get('from')   # YYYY-MM-DD
+    date_to   = request.args.get('to')
+
+    try:
+        # 파일 목록 (날짜 필터)
+        files = sorted(glob.glob(os.path.join(log_dir, 'sensors_*.csv')))
+        if date_from:
+            files = [f for f in files if os.path.basename(f) >= f'sensors_{date_from}.csv']
+        if date_to:
+            files = [f for f in files if os.path.basename(f) <= f'sensors_{date_to}.csv']
+
+        if not files:
+            return jsonify({'error': '해당 기간 데이터 없음'}), 404
+
+        # 파일 합치기
+        import io, csv
+        output = io.StringIO()
+        header_written = False
+        total_rows = 0
+
+        for fpath in files:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                rows = list(reader)
+                if not rows:
+                    continue
+                if not header_written:
+                    output.write(','.join(rows[0]) + '\n')
+                    header_written = True
+                for row in rows[1:]:
+                    output.write(','.join(row) + '\n')
+                    total_rows += 1
+
+        fname_from = date_from or 'all'
+        fname_to   = date_to   or datetime.now().strftime('%Y-%m-%d')
+        filename   = f"sensor_data_{fname_from}_to_{fname_to}.csv"
+
+        return Response(
+            '\ufeff' + output.getvalue(),
+            mimetype='text/csv; charset=utf-8',
+            headers={'Content-Disposition': f'attachment; filename={filename}'}
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/download/files')
+def list_download_files():
+    """다운로드 가능한 파일 목록 조회"""
+    import glob
+
+    log_dir = '/home/pi/smart_farm/logs'
+    result  = {'sensor_files': [], 'irrigation_csv': None}
+
+    # 센서 CSV 파일 목록
+    for fpath in sorted(glob.glob(os.path.join(log_dir, 'sensors_*.csv')), reverse=True):
+        fname = os.path.basename(fpath)
+        size  = os.path.getsize(fpath)
+        rows  = 0
+        try:
+            with open(fpath, 'r') as f:
+                rows = max(0, sum(1 for _ in f) - 1)  # 헤더 제외
+        except Exception:
+            pass
+        result['sensor_files'].append({
+            'filename': fname,
+            'date': fname.replace('sensors_','').replace('.csv',''),
+            'size_kb': round(size/1024, 1),
+            'rows': rows
+        })
+
+    # 관수 이력 CSV
+    irr_path = os.path.join(log_dir, 'irrigation_history.csv')
+    if os.path.exists(irr_path):
+        rows = 0
+        try:
+            with open(irr_path,'r') as f:
+                rows = max(0, sum(1 for _ in f) - 1)
+        except Exception:
+            pass
+        result['irrigation_csv'] = {
+            'filename': 'irrigation_history.csv',
+            'size_kb': round(os.path.getsize(irr_path)/1024, 1),
+            'rows': rows
+        }
+
+    return jsonify({'success': True, 'data': result})
+
 if __name__ == '__main__':
     print("=" * 60)
     print("🌐 스마트 관수 시스템 웹 대시보드 v2")
