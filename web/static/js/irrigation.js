@@ -6,7 +6,7 @@ socket.on('connect',()=>{console.log('✅ 서버 연결됨');setConnUI(true);ref
 socket.on('disconnect',()=>{console.log('❌ 서버 연결 끊김');setConnUI(false);});
 socket.on('sensor_update',()=>{});
 socket.on('irrigation_update',(data)=>{if(data.is_irrigating!==undefined)state.isIrrigating=data.is_irrigating;if(data.current_zone!==undefined)state.currentZone=data.current_zone;if(data.mode!==undefined){state.mode=data.mode;applyModeUI(data.mode);}applyIrrigationUI();});
-document.addEventListener('DOMContentLoaded',()=>{console.log('🚀 관수 제어 페이지 초기화');buildZoneCards();initMoistureChart();refreshStatus();loadHistory();setInterval(refreshStatus,30000);setInterval(loadHistory,60000);});
+document.addEventListener('DOMContentLoaded',()=>{console.log('🚀 관수 제어 페이지 초기화');buildZoneCards();initMoistureChart();refreshStatus();loadHistory();initDateDefaults();setInterval(refreshStatus,30000);setInterval(loadHistory,60000);});
 function buildZoneCards(){const c=document.getElementById('zone-cards-container');if(!c)return;c.innerHTML='';for(let z=1;z<=12;z++){state.zones[z]={moisture:null,temperature:null,ec:null,threshold:40.0,status:'offline'};const col=document.createElement('div');col.className='col-6 col-md-4 col-lg-3 col-xl-2';col.innerHTML=zoneCardHTML(z);c.appendChild(col);}for(let z=1;z<=12;z++)initGauge(z);}
 function zoneCardHTML(z){return`<div class="card zone-card" id="zone-card-${z}"><div class="card-header d-flex justify-content-between align-items-center"><span class="fw-bold">구역 ${z}</span><span class="z-badge z-offline" id="zone-badge-${z}">오프라인</span></div><div class="card-body p-2 text-center"><div class="gauge-wrap" id="gauge-wrap-${z}"><canvas id="gauge-canvas-${z}" width="86" height="86"></canvas><div class="gauge-center"><span class="val" id="zone-moisture-${z}">—</span><span class="unit">%</span></div></div><div class="sensor-row"><span><i class="bi bi-thermometer" style="color:#ff9800;"></i><b id="zone-temp-${z}">—</b>℃</span><span><i class="bi bi-lightning" style="color:#667eea;"></i><b id="zone-ec-${z}">—</b>µS</span></div><div class="threshold-row justify-content-center">임계:<span class="val" id="zone-thr-${z}">40%</span><button onclick="openThresholdModal(${z})"><i class="bi bi-pencil"></i></button></div><button class="btn btn-outline-primary btn-irrigate w-100" id="btn-irrigate-${z}" onclick="manualIrrigate(${z})"><i class="bi bi-droplet-fill me-1"></i>관수</button></div></div>`;}
 const gaugeCtx={};
@@ -37,3 +37,62 @@ function setConnUI(connected){const dot=document.getElementById('conn-dot');cons
 function setText(id,val){const el=document.getElementById(id);if(el)el.textContent=val;}
 let toastTimer=null;
 function showToast(msg){const existing=document.querySelector('.irr-toast');if(existing)existing.remove();if(toastTimer)clearTimeout(toastTimer);const div=document.createElement('div');div.className='irr-toast';div.textContent=msg;document.body.appendChild(div);toastTimer=setTimeout(()=>div.remove(),3500);}
+
+// ────────────────────────────────────────────────────
+// 날짜 필터 기본값 초기화 (오늘 기준 30일 ~ 오늘)
+// ────────────────────────────────────────────────────
+function initDateDefaults(){
+  const toEl=document.getElementById('hist-to');
+  const fromEl=document.getElementById('hist-from');
+  if(!toEl||!fromEl)return;
+  const today=new Date();
+  const yyyy=today.getFullYear();
+  const mm=String(today.getMonth()+1).padStart(2,'0');
+  const dd=String(today.getDate()).padStart(2,'0');
+  toEl.value=`${yyyy}-${mm}-${dd}`;
+  const past=new Date(today);past.setDate(today.getDate()-30);
+  const py=past.getFullYear(),pm=String(past.getMonth()+1).padStart(2,'0'),pd=String(past.getDate()).padStart(2,'0');
+  fromEl.value=`${py}-${pm}-${pd}`;
+}
+
+// ────────────────────────────────────────────────────
+// 관수 이력 CSV 다운로드
+// ────────────────────────────────────────────────────
+function downloadIrrigationCSV(){
+  const fromEl=document.getElementById('hist-from');
+  const toEl=document.getElementById('hist-to');
+  const from=fromEl?fromEl.value:'';
+  const to=toEl?toEl.value:'';
+
+  let url='/api/download/irrigation-history';
+  const params=[];
+  if(from)params.push(`from=${encodeURIComponent(from)}`);
+  if(to)params.push(`to=${encodeURIComponent(to)}`);
+  if(params.length)url+='?'+params.join('&');
+
+  // 파일 없음 사전 체크 후 다운로드
+  fetch('/api/download/files')
+    .then(r=>r.json())
+    .then(d=>{
+      if(!d.success||!d.data.irrigation_csv){
+        showToast('⚠️ 저장된 관수 이력 CSV 파일이 없습니다.\n(자동 관수가 한 번도 실행되지 않았을 수 있습니다)');
+        return;
+      }
+      showToast(`📥 CSV 다운로드 중... (${d.data.irrigation_csv.rows}건)`);
+      const a=document.createElement('a');
+      a.href=url;
+      a.download='';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    })
+    .catch(()=>{
+      // 체크 실패해도 그냥 다운로드 시도
+      const a=document.createElement('a');
+      a.href=url;
+      a.download='';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+}
