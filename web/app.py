@@ -824,12 +824,6 @@ if __name__ == '__main__':
         print()
         
         # Flask 서버 실행
-        socketio.run(
-            app,
-            host='0.0.0.0',  # 외부 접속 허용
-            port=5000,
-            debug=True,
-            use_reloader=False  # 리로더 비활성화 (센서 충돌 방지)
-        )
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
     else:
         print("❌ 시스템 초기화 실패")
