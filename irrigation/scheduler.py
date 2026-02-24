@@ -132,7 +132,7 @@ class IrrigationScheduler:
                 return []
             with open(self.schedules_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            return data if isinstance(data, list) else []
+            return data if isinstance(data, list) else data.get('schedules', [])
         except Exception as exc:
             logger.error("[Scheduler] schedules.json 로드 실패: %s", exc)
             return []
@@ -190,15 +190,17 @@ class IrrigationScheduler:
             "[Scheduler] 스케줄 #%d 실행: %s, %d초 관수", sid, zone_name, duration
         )
         try:
-            success = self.auto_controller.irrigate_zone(
+            result = self.auto_controller.irrigate_zone(
                 zone_id=zone_id,
                 duration=duration,
-                trigger="schedule",
             )
+            success = result[0] if isinstance(result, tuple) else result
             if success:
                 logger.info("[Scheduler] 스케줄 #%d 관수 완료 (%s)", sid, zone_name)
+                print(f"[Scheduler] ✅ 스케줄 #{sid} 관수 완료: {zone_name}")
             else:
                 logger.warning("[Scheduler] 스케줄 #%d 관수 실패 (%s)", sid, zone_name)
+                print(f"[Scheduler] ⚠️  스케줄 #{sid} 관수 실패: {zone_name}")
         except Exception as exc:
             logger.error(
                 "[Scheduler] 스케줄 #%d 관수 중 예외: %s", sid, exc, exc_info=True
