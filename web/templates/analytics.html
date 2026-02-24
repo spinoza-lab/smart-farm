@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>데이터 분석 - 스마트 관수 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <!-- Chart.js + 줌/팬 플러그인 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <style>
+        :root{--font-size-base:18px;--font-size-title:24px;--font-size-small:14px;}
+        body{font-size:var(--font-size-base);background-color:#f8f9fa;}
+        body.font-xs{--font-size-base:14px;--font-size-title:18px;--font-size-small:11px;}
+        body.font-small{--font-size-base:16px;--font-size-title:22px;--font-size-small:13px;}
+        body.font-medium{--font-size-base:20px;--font-size-title:26px;--font-size-small:16px;}
+        body.font-large{--font-size-base:24px;--font-size-title:32px;--font-size-small:20px;}
+        body.font-xl{--font-size-base:28px;--font-size-title:38px;--font-size-small:24px;}
+        body.font-xxl{--font-size-base:32px;--font-size-title:44px;--font-size-small:28px;}
+        .navbar{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);}
+        .card{margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1);}
+        .card-header{background-color:#f8f9fa;border-bottom:2px solid #667eea;font-size:var(--font-size-title);font-weight:bold;}
+        .nav-tabs .nav-link{font-size:var(--font-size-base);padding:15px 25px;font-weight:600;}
+        .nav-tabs .nav-link.active{background-color:#667eea;color:white;}
+        .font-size-controls{position:fixed;top:70px;right:20px;z-index:1000;display:flex;gap:8px;background:white;padding:8px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.2);}
+        .btn-font-size{width:55px;height:55px;padding:0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+        @media(max-width:768px){.font-size-controls{top:auto;bottom:20px;right:20px;}}
+
+        /* 통계 카드 */
+        .stat-card{border-radius:12px;padding:18px 20px;text-align:center;transition:transform .15s;}
+        .stat-card:hover{transform:translateY(-2px);}
+        .stat-card .stat-val{font-size:var(--font-size-title);font-weight:800;line-height:1.1;}
+        .stat-card .stat-lbl{font-size:var(--font-size-small);color:#888;margin-top:4px;}
+        .stat-tank1{background:linear-gradient(135deg,#e3f2fd,#bbdefb);border:1px solid #90caf9;}
+        .stat-tank2{background:linear-gradient(135deg,#e8f5e9,#c8e6c9);border:1px solid #a5d6a7;}
+        .stat-irr{background:linear-gradient(135deg,#fff3e0,#ffe0b2);border:1px solid #ffcc80;}
+        .stat-alert{background:linear-gradient(135deg,#fce4ec,#f8bbd0);border:1px solid #f48fb1;}
+
+        /* 날짜 필터 바 */
+        .filter-bar{background:white;border-radius:12px;padding:14px 20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:20px;}
+        .filter-bar label{font-size:var(--font-size-small);font-weight:600;color:#555;margin-bottom:2px;}
+
+        /* 차트 줌 힌트 */
+        .zoom-hint{font-size:var(--font-size-small);color:#999;text-align:right;margin-top:4px;}
+
+        /* 관수 이력 테이블 */
+        .irr-table th{font-size:var(--font-size-small);color:#888;font-weight:600;}
+        .irr-table td{font-size:var(--font-size-small);vertical-align:middle;}
+        .irr-scroll{max-height:340px;overflow-y:auto;}
+
+        /* 로딩 오버레이 */
+        .loading-overlay{display:none;position:absolute;inset:0;background:rgba(255,255,255,.75);z-index:50;align-items:center;justify-content:center;border-radius:8px;}
+        .loading-overlay.show{display:flex;}
+        .chart-wrap{position:relative;}
+
+        /* 구역별 관수 횟수 바 */
+        .zone-bar-wrap{height:22px;background:#e9ecef;border-radius:4px;overflow:hidden;}
+        .zone-bar-fill{height:100%;border-radius:4px;transition:width .6s ease;background:linear-gradient(90deg,#667eea,#764ba2);}
+        .zone-row td{font-size:var(--font-size-small);padding:6px 10px;vertical-align:middle;}
+
+        /* 빈 상태 */
+        .empty-state{text-align:center;padding:48px 20px;color:#aaa;}
+        .empty-state i{font-size:3rem;display:block;margin-bottom:12px;}
+    </style>
+</head>
+<body>
+
+<!-- 네비게이션 바 -->
+<nav class="navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/"><i class="bi bi-droplet-fill"></i> 스마트 관수 시스템</a>
+        <div>
+            <a href="/" class="btn btn-light me-2"><i class="bi bi-speedometer2"></i> 대시보드</a>
+            <a href="/irrigation" class="btn btn-warning me-2"><i class="bi bi-water"></i> 관수 제어</a>
+            <a href="/analytics" class="btn btn-info me-2"><i class="bi bi-bar-chart-line"></i> 분석</a>
+            <a href="/settings" class="btn btn-outline-light"><i class="bi bi-gear-fill"></i> 설정</a>
+        </div>
+    </div>
+</nav>
+
+<!-- 폰트 크기 조절 -->
+<div class="font-size-controls">
+    <button class="btn btn-outline-secondary btn-font-size" onclick="decreaseFontSize()"><i class="bi bi-dash-lg"></i></button>
+    <button class="btn btn-primary btn-font-size" onclick="resetFontSize()"><i class="bi bi-circle-fill"></i></button>
+    <button class="btn btn-outline-secondary btn-font-size" onclick="increaseFontSize()"><i class="bi bi-plus-lg"></i></button>
+</div>
+
+<div class="container-fluid mt-4">
+    <h1 class="mb-3"><i class="bi bi-bar-chart-line"></i> 데이터 분석</h1>
+
+    <!-- ── 날짜 필터 바 ── -->
+    <div class="filter-bar d-flex flex-wrap align-items-end gap-3">
+        <div>
+            <label>시작일</label>
+            <input type="date" id="filter-from" class="form-control form-control-sm" style="width:150px;">
+        </div>
+        <div>
+            <label>종료일</label>
+            <input type="date" id="filter-to" class="form-control form-control-sm" style="width:150px;">
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-sm btn-outline-secondary" onclick="setRange(1)">오늘</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="setRange(7)">7일</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="setRange(30)">30일</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="setRange(90)">90일</button>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="loadAll()">
+            <i class="bi bi-search me-1"></i>조회
+        </button>
+        <span id="data-summary" class="text-muted ms-auto" style="font-size:var(--font-size-small);"></span>
+    </div>
+
+    <!-- ── 요약 통계 카드 4개 ── -->
+    <div class="row g-3 mb-4" id="stat-cards">
+        <div class="col-6 col-md-3">
+            <div class="stat-card stat-tank1">
+                <div class="stat-val text-primary" id="stat-t1-avg">—</div>
+                <div class="stat-lbl">탱크1 평균 수위</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card stat-tank2">
+                <div class="stat-val text-success" id="stat-t2-avg">—</div>
+                <div class="stat-lbl">탱크2 평균 수위</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card stat-irr">
+                <div class="stat-val text-warning" id="stat-irr-cnt">—</div>
+                <div class="stat-lbl">총 관수 횟수</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card stat-alert">
+                <div class="stat-val text-danger" id="stat-irr-time">—</div>
+                <div class="stat-lbl">총 관수 시간</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── 탭 ── -->
+    <ul class="nav nav-tabs mb-4" id="analyticsTabs">
+        <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-tank"><i class="bi bi-droplet"></i> 탱크 수위</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-irr"><i class="bi bi-water"></i> 관수 분석</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-zone"><i class="bi bi-grid-3x3-gap"></i> 구역별 통계</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-log"><i class="bi bi-table"></i> 원시 로그</button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+
+        <!-- ══════════════════════════════════════
+             탭1: 탱크 수위 그래프
+        ══════════════════════════════════════ -->
+        <div class="tab-pane fade show active" id="tab-tank">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span><i class="bi bi-graph-up"></i> 탱크 수위 추이</span>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-secondary btn-sm" onclick="resetTankZoom()"><i class="bi bi-zoom-out me-1"></i>줌 초기화</button>
+                        <button class="btn btn-outline-success btn-sm" onclick="downloadSensorCSV()"><i class="bi bi-download me-1"></i>CSV</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-wrap">
+                        <div class="loading-overlay" id="tank-loading"><div class="spinner-border text-primary"></div></div>
+                        <canvas id="tank-chart" height="90"></canvas>
+                    </div>
+                    <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>마우스 휠: 줌 &nbsp;|&nbsp; 드래그: 이동 &nbsp;|&nbsp; 더블클릭: 초기화</p>
+                </div>
+            </div>
+
+            <!-- 탱크 상세 통계 -->
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header"><i class="bi bi-droplet"></i> 탱크1 (물) 통계</div>
+                        <div class="card-body" id="t1-stats-body">
+                            <div class="empty-state"><i class="bi bi-hourglass"></i>조회 중...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header"><i class="bi bi-droplet-half"></i> 탱크2 (양액) 통계</div>
+                        <div class="card-body" id="t2-stats-body">
+                            <div class="empty-state"><i class="bi bi-hourglass"></i>조회 중...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════════════════════════════════
+             탭2: 관수 분석
+        ══════════════════════════════════════ -->
+        <div class="tab-pane fade" id="tab-irr">
+            <div class="row g-3">
+                <!-- 일별 관수 횟수 바 차트 -->
+                <div class="col-lg-7">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-bar-chart"></i> 일별 관수 횟수</span>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="resetIrrZoom()"><i class="bi bi-zoom-out"></i></button>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-wrap">
+                                <div class="loading-overlay" id="irr-loading"><div class="spinner-border text-warning"></div></div>
+                                <canvas id="irr-bar-chart" height="130"></canvas>
+                            </div>
+                            <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>휠: 줌 &nbsp;|&nbsp; 드래그: 이동</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- 트리거 비율 도넛 -->
+                <div class="col-lg-5">
+                    <div class="card">
+                        <div class="card-header"><i class="bi bi-pie-chart"></i> 관수 트리거 비율</div>
+                        <div class="card-body d-flex align-items-center justify-content-center" style="min-height:240px;">
+                            <canvas id="trigger-donut" style="max-width:240px;max-height:240px;"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <!-- 관수 시간(초) 추이 라인 -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-clock-history"></i> 관수 지속 시간 추이 (초)</span>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="resetDurZoom()"><i class="bi bi-zoom-out"></i></button>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-wrap">
+                                <canvas id="dur-line-chart" height="80"></canvas>
+                            </div>
+                            <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>휠: 줌 &nbsp;|&nbsp; 드래그: 이동</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════════════════════════════════
+             탭3: 구역별 통계
+        ══════════════════════════════════════ -->
+        <div class="tab-pane fade" id="tab-zone">
+            <div class="row g-3">
+                <!-- 구역별 관수 횟수 수평 바 -->
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header"><i class="bi bi-grid-3x3-gap"></i> 구역별 관수 횟수</div>
+                        <div class="card-body">
+                            <canvas id="zone-bar-chart" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <!-- 구역별 평균 관수 시간 -->
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header"><i class="bi bi-stopwatch"></i> 구역별 평균 관수 시간 (초)</div>
+                        <div class="card-body">
+                            <canvas id="zone-dur-chart" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <!-- 구역 상세 테이블 -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header"><i class="bi bi-table"></i> 구역별 상세 통계</div>
+                        <div class="card-body p-0">
+                            <div class="irr-scroll">
+                                <table class="table table-hover irr-table mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-3">구역</th>
+                                            <th>관수 횟수</th>
+                                            <th>총 시간(초)</th>
+                                            <th>평균 시간(초)</th>
+                                            <th>최근 관수</th>
+                                            <th>성공률</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="zone-stats-tbody">
+                                        <tr><td colspan="6" class="text-center text-muted py-4">데이터 없음</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════════════════════════════════
+             탭4: 원시 로그
+        ══════════════════════════════════════ -->
+        <div class="tab-pane fade" id="tab-log">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span><i class="bi bi-table"></i> 관수 이력 로그</span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <select id="log-zone-filter" class="form-select form-select-sm" style="width:120px;" onchange="renderLogTable()">
+                            <option value="">전체 구역</option>
+                        </select>
+                        <select id="log-trigger-filter" class="form-select form-select-sm" style="width:110px;" onchange="renderLogTable()">
+                            <option value="">전체 트리거</option>
+                            <option value="manual">수동</option>
+                            <option value="auto">자동</option>
+                        </select>
+                        <button class="btn btn-success btn-sm" onclick="downloadIrrCSV()"><i class="bi bi-download me-1"></i>CSV</button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="irr-scroll">
+                        <table class="table table-hover irr-table mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th class="ps-3">시간</th>
+                                    <th>구역</th>
+                                    <th>관수(초)</th>
+                                    <th>트리거</th>
+                                    <th>관수 전 수분</th>
+                                    <th>결과</th>
+                                </tr>
+                            </thead>
+                            <tbody id="log-tbody">
+                                <tr><td colspan="6" class="text-center text-muted py-4">조회 중...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="p-2 text-muted text-end" style="font-size:var(--font-size-small);" id="log-count"></div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /tab-content -->
+</div><!-- /container -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/analytics.js') }}?v=1"></script>
+<script>
+    let currentFontIndex = 2;
+    function setFontSize(s){document.body.className=document.body.className.replace(/font-\w+/g,'');if(s!=='normal')document.body.classList.add('font-'+s);localStorage.setItem('analyticsFontSize',s);currentFontIndex=['xs','small','normal','medium','large','xl','xxl'].indexOf(s);}
+    function increaseFontSize(){const s=['xs','small','normal','medium','large','xl','xxl'];currentFontIndex=Math.min(currentFontIndex+1,s.length-1);setFontSize(s[currentFontIndex]);}
+    function decreaseFontSize(){const s=['xs','small','normal','medium','large','xl','xxl'];currentFontIndex=Math.max(currentFontIndex-1,0);setFontSize(s[currentFontIndex]);}
+    function resetFontSize(){currentFontIndex=2;setFontSize('normal');}
+    document.addEventListener('DOMContentLoaded',()=>{const saved=localStorage.getItem('analyticsFontSize')||'normal';setFontSize(saved);});
+</script>
+</body>
+</html>

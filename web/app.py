@@ -955,6 +955,115 @@ def list_download_files():
 
     return jsonify({'success': True, 'data': result})
 
+
+# ============================================================
+# 📊 분석 페이지 라우트 + API  (Stage 7)
+# ============================================================
+
+@app.route('/analytics')
+def analytics():
+    """데이터 분석 페이지"""
+    return render_template('analytics.html')
+
+
+@app.route('/api/analytics/sensor-data')
+def analytics_sensor_data():
+    """분석용 탱크 수위 CSV 데이터 조회 (날짜 필터 + 통계)"""
+    import csv, glob, statistics
+
+    log_dir   = '/home/pi/smart_farm/logs'
+    date_from = request.args.get('from')
+    date_to   = request.args.get('to')
+
+    try:
+        files = sorted(glob.glob(os.path.join(log_dir, 'sensors_*.csv')))
+        if date_from:
+            files = [f for f in files if os.path.basename(f) >= f'sensors_{date_from}.csv']
+        if date_to:
+            files = [f for f in files if os.path.basename(f) <= f'sensors_{date_to}.csv']
+
+        rows = []
+        for fpath in files:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows.append(row)
+
+        # 통계 계산
+        def calc_stats(values, rows_ref):
+            vals = [float(v) for v in values if v not in ('', None)]
+            if not vals:
+                return {'count': 0, 'avg': 0, 'min': 0, 'max': 0,
+                        'first_timestamp': '', 'last_timestamp': ''}
+            ts = [r.get('timestamp','') for r in rows_ref]
+            return {
+                'count': len(vals),
+                'avg':   round(statistics.mean(vals), 1),
+                'min':   round(min(vals), 1),
+                'max':   round(max(vals), 1),
+                'first_timestamp': ts[0]  if ts else '',
+                'last_timestamp':  ts[-1] if ts else '',
+            }
+
+        t1_vals = [r.get('tank1_level', '') for r in rows]
+        t2_vals = [r.get('tank2_level', '') for r in rows]
+
+        # 응답 데이터 다운샘플 (최대 2000행 전송)
+        MAX_ROWS = 2000
+        step = max(1, len(rows) // MAX_ROWS)
+        sampled = rows[::step]
+
+        return jsonify({
+            'success': True,
+            'data':   sampled,
+            'total':  len(rows),
+            'stats': {
+                'tank1': calc_stats(t1_vals, rows),
+                'tank2': calc_stats(t2_vals, rows),
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/analytics/irrigation-history')
+def analytics_irrigation_history():
+    """분석용 관수 이력 전체 조회 (날짜 필터)"""
+    import csv
+
+    csv_path  = '/home/pi/smart_farm/logs/irrigation_history.csv'
+    date_from = request.args.get('from')
+    date_to   = request.args.get('to')
+
+    if not os.path.exists(csv_path):
+        # 파일이 없으면 메모리 이력 반환
+        global auto_irrigation
+        if auto_irrigation:
+            history = list(reversed(auto_irrigation.irrigation_history))
+            return jsonify({'success': True, 'data': history, 'source': 'memory'})
+        return jsonify({'success': True, 'data': [], 'source': 'empty'})
+
+    try:
+        rows = []
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                ts = row.get('timestamp', '')
+                if date_from and ts < date_from:
+                    continue
+                if date_to   and ts > date_to + ' 23:59:59':
+                    continue
+                rows.append(row)
+
+        return jsonify({
+            'success': True,
+            'data':    list(reversed(rows)),
+            'total':   len(rows),
+            'source':  'csv'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     print("=" * 60)
     print("🌐 스마트 관수 시스템 웹 대시보드 v2")
