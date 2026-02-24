@@ -1,7 +1,8 @@
 # 🌱 스마트 관수 시스템 (Smart Irrigation System)
 
 > **Repository**: [spinoza-lab/smart-farm](https://github.com/spinoza-lab/smart-farm)  
-> **최종 업데이트**: 2026-02-20
+> **최종 업데이트**: 2026-02-23  
+> **버전**: v2.5
 
 라즈베리파이 기반 자동 관수 및 수위 모니터링 시스템
 
@@ -12,8 +13,11 @@
 - ⚙️ **정밀 캘리브레이션** - 소수점 3자리 정밀도 (0.001V 단위)
 - 📊 **실시간 대시보드** - WebSocket 기반 실시간 업데이트
 - 🚨 **알림 시스템** - 수위 부족/과다 자동 경고
-- 📈 **데이터 로깅** - CSV 형식 자동 저장
-- 🎯 **자동 관수 제어** - 시간/수위 기반 자동화 (개발 중)
+- 📈 **데이터 로깅** - CSV 형식 자동 저장 (탱크 수위 + 관수 이력)
+- 🌱 **12구역 자동 관수** - 토양 수분 센서 기반 자동/수동/스케줄 모드
+- 🎛️ **관수 제어 웹 UI** - 구역별 게이지, 수동 관수, 임계값 설정
+- 📥 **CSV 데이터 다운로드** - 탱크 수위·관수 이력 기간별 내보내기
+- 🔧 **systemd 자동 시작** - 부팅 시 자동 실행 및 로그 관리
 
 ## 🛠 하드웨어 구성
 
@@ -23,29 +27,33 @@
 - **MCP23017 x2** (I2C 0x20, 0x21) - 32개 GPIO 확장
 - **ADS1115** (I2C 0x48) - 4채널 16-bit ADC (센서 읽기, 전압 모드 0~5V)
 - **RTC DS1307** (I2C 0x68) - 실시간 시계
+- **RS-485 토양 수분 센서 x12** (Modbus RTU) - 수분·온도·EC 측정
 
 ### 전원 및 릴레이 시스템
 
 - 릴레이 모듈 6개 x 4채널 (총 24채널)
 - 50A 릴레이 x3개
 - DC 5V 5A 전원 공급
+- 릴레이 구성: 구역 밸브 12개 + 펌프 1개 + 호스건 1개
 
 ## 🏗 프로젝트 구조
 
 ```
 smart_farm/
 ├── hardware/              # 하드웨어 제어
-│   ├── gpio_expander.py   # MCP23017 GPIO 확장
-│   ├── relay_controller.py # 릴레이 제어
-│   ├── sensor_reader.py   # ADS1115 센서 읽기
-│   └── rtc_manager.py     # RTC 시간 관리
+│   ├── gpio_expander.py       # MCP23017 GPIO 확장
+│   ├── relay_controller.py    # 릴레이 제어 (12구역 + 펌프)
+│   ├── sensor_reader.py       # ADS1115 센서 읽기
+│   ├── modbus_soil_sensor.py  # RS-485 토양 수분 센서 (Modbus RTU) ← NEW
+│   └── rtc_manager.py         # RTC 시간 관리
 │
 ├── irrigation/            # 관수 제어
-│   ├── config_manager.py  # 설정 관리
-│   ├── zone_manager.py    # 구역별 관수
-│   ├── scheduler.py       # 스케줄 관리
-│   ├── scenarios.py       # 시나리오 실행
-│   └── config/            # 설정 파일
+│   ├── auto_controller.py     # 자동 관수 컨트롤러 (수동/자동/스케줄) ← NEW
+│   ├── config_manager.py      # 설정 관리
+│   ├── zone_manager.py        # 구역별 관수
+│   ├── scheduler.py           # 스케줄 관리
+│   ├── scenarios.py           # 시나리오 실행
+│   └── config/                # 설정 파일
 │
 ├── monitoring/            # 모니터링 & 로깅
 │   ├── sensor_monitor.py  # 센서 모니터링 (핵심)
@@ -56,20 +64,24 @@ smart_farm/
 │   ├── app.py             # Flask 서버
 │   ├── templates/         # HTML 템플릿
 │   │   ├── index.html     # 대시보드
-│   │   └── settings.html  # 설정 페이지
+│   │   ├── settings.html  # 설정 페이지
+│   │   └── irrigation.html  # 관수 제어 페이지 ← NEW
 │   └── static/            # CSS, JS, 파비콘
 │       ├── css/style.css
 │       ├── js/
 │       │   ├── dashboard.js
-│       │   └── settings.js
+│       │   ├── settings.js
+│       │   └── irrigation.js  # 관수 제어 클라이언트 ← NEW
 │       └── favicon.svg
 │
 ├── logs/                  # 로그 파일
-│   ├── sensors_YYYY-MM-DD.csv  # 센서 데이터
+│   ├── sensors_YYYY-MM-DD.csv  # 탱크 수위 센서 데이터 (10초 주기)
+│   ├── irrigation_history.csv  # 관수 이력 영구 저장 ← NEW
 │   └── alerts.log              # 알림 로그
 │
 └── config/                # 설정 파일
-    └── sensor_calibration.json  # 센서 캘리브레이션
+    ├── sensor_calibration.json  # 탱크 센서 캘리브레이션
+    └── soil_sensors.json        # 토양 센서 / 관수 설정 ← NEW
 ```
 
 ## 🚀 설치 및 실행
@@ -95,12 +107,15 @@ pip install -r requirements.txt
 - `Adafruit-Blinka>=8.0.0`
 - `flask`
 - `flask-socketio`
+- `pyserial` (RS-485 통신)
+- `minimalmodbus` (Modbus RTU 드라이버)
 
-### 3. I2C 활성화
+### 3. I2C / UART 활성화
 
 ```bash
 sudo raspi-config
 # Interface Options > I2C > Enable
+# Interface Options > Serial Port > Enable (RS-485용)
 sudo reboot
 ```
 
@@ -114,7 +129,20 @@ python3 app.py
 
 **접속 주소:**
 - 로컬: `http://localhost:5000`
-- 네트워크: `http://192.168.0.84:5000` (라즈베리파이 IP)
+- 네트워크: `http://192.168.0.111:5000` (라즈베리파이 IP)
+
+### 5. systemd 서비스 (자동 시작)
+
+```bash
+# 서비스 상태 확인
+sudo systemctl status smart-farm.service
+
+# 수동 재시작
+sudo systemctl restart smart-farm.service
+
+# 부팅 자동 시작 설정
+sudo systemctl enable smart-farm.service
+```
 
 ## 📊 센서 모니터링 시스템
 
@@ -144,7 +172,6 @@ python3 app.py
 타이밍: 10초 주기
   1초째 (0.0초) → 샘플 1
   2초째 (1.0초) → 샘플 2
-  3초째 (2.0초) → 샘플 3
   ...
   10초째 (9.0초) → 샘플 10
   ↓
@@ -169,15 +196,63 @@ socketio.emit('sensor_update') (웹으로 전송)
 dashboard.js가 Chart 업데이트 + UI 갱신
 ```
 
+### 토양 수분 센서 (RS-485 Modbus)
+
+- **센서 수**: 12개 (구역 1~12)
+- **측정 항목**: 수분(%), 온도(℃), EC(µS/cm)
+- **통신**: Modbus RTU over RS-485
+- **활용**: 자동 관수 트리거 판단 기준
+
+## 🌱 관수 제어 시스템
+
+### 동작 모드
+
+| 모드 | 설명 |
+|------|------|
+| **수동 (Manual)** | 웹 UI에서 구역 선택 후 즉시 관수 |
+| **자동 (Auto)** | 토양 수분이 임계값 미만이면 자동 관수 |
+| **스케줄** | 설정한 시간대에 자동 관수 (준비 중) |
+
+### 관수 실행 흐름
+
+```
+[수동] 웹 UI 버튼 클릭
+  → POST /api/irrigation/start {zone_id, duration}
+  → relay: 펌프 ON → 해당 구역 밸브 ON
+  → duration 초 후 밸브 OFF → 펌프 OFF
+  → irrigation_history.csv 기록
+
+[자동] 30초 주기 모니터링
+  → 12구역 토양 수분 측정
+  → 수분 < 임계값 AND 탱크 수위 >= 최소 수위
+  → 관수 실행 → CSV 기록
+```
+
+### 관수 이력 CSV 저장 형식
+
+```
+timestamp,zone_id,duration_sec,trigger,moisture_before,success
+2026-02-23 10:15:30,3,30,manual,28.5,true
+2026-02-23 11:02:00,7,45,auto,22.1,true
+```
+
 ## 📈 데이터 로깅
 
-### CSV 형식
+### 탱크 수위 CSV 형식 (sensors_YYYY-MM-DD.csv)
 
 ```csv
 timestamp,tank1_level,tank2_level,ch0_voltage,ch1_voltage,ch2_voltage,ch3_voltage
 2026-02-20 13:08:30,72.2,78.4,0.589,0.589,0.589,0.588
 2026-02-20 13:08:40,72.2,78.4,0.589,0.589,0.589,0.588
 2026-02-20 13:08:50,72.3,78.5,0.589,0.590,0.590,0.589
+```
+
+### 관수 이력 CSV 형식 (irrigation_history.csv)
+
+```
+timestamp,zone_id,duration_sec,trigger,moisture_before,success
+2026-02-23 10:15:30,3,30,manual,28.5,true
+2026-02-23 11:02:00,7,45,auto,22.1,true
 ```
 
 ## 🚨 알림 시스템
@@ -223,7 +298,7 @@ timestamp,tank1_level,tank2_level,ch0_voltage,ch1_voltage,ch2_voltage,ch3_voltag
 - ✅ **정밀도 유지**: 계산 시 전체 정밀도 사용
 - ✅ **3중 검증**: HTML pattern + JavaScript + 서버 round()
 
-## 🎨 웹 대시보드 (v2.0)
+## 🎨 웹 대시보드 (v2.5)
 
 ### 대시보드 페이지 (`/`)
 
@@ -242,21 +317,150 @@ timestamp,tank1_level,tank2_level,ch0_voltage,ch1_voltage,ch2_voltage,ch3_voltag
 - 최근 10개 경고/알림 표시
 - 타임스탬프, 레벨, 메시지
 
-#### UI/UX 개선 (v2.0)
-- ✅ Gradient 네비게이션 바 (보라색 그라데이션)
-- ✅ 7단계 폰트 크기 조절 (xs ~ xxl)
-- ✅ 탭 메뉴 방식 (실시간 / 차트 / 알림)
-- ✅ 터치 친화적 버튼 (≥60px 높이)
-- ✅ 파비콘 추가 (favicon.svg)
-- ✅ 반응형 디자인 (모바일/태블릿 대응)
-
 ### 설정 페이지 (`/settings`)
 
 - **센서 캘리브레이션**: 정밀 전압 입력 (0.001V 단위)
-- **자동 제어**: (Stage 4 예정)
+- **자동 제어**: (Stage 7 이후 확장 예정)
 - **호스건 설정**: 수동 On/Off
-- **알림 설정**: (Stage 6 예정)
-- **동일한 UI/UX**: 대시보드와 일관된 디자인
+- **알림 설정**: (Stage 8 예정)
+
+### 관수 제어 페이지 (`/irrigation`) ← NEW
+
+#### 제어 패널 탭
+- 시스템 상태 배너 (수동/자동/스케줄 모드 표시)
+- 현재 관수 구역 및 오늘 관수 횟수
+- 관수 진행 프로그레스 바 (잔여 시간 표시)
+- 긴급 정지 버튼
+- 모드 선택 버튼 (수동 / 자동 / 스케줄)
+- 기본 관수 시간 설정 (초 단위)
+- 12구역 토양 수분 바 차트 (Chart.js)
+
+#### 구역별 제어 탭
+- 12개 구역 카드 (원형 게이지 + 수분/온도/EC 수치 표시)
+- 구역 상태 배지: 관수중 / 건조 / 적정 / 오프라인
+- 구역별 수동 관수 버튼
+- 임계값 설정 모달 (슬라이더, 10~80%)
+
+#### 관수 이력 탭
+- 최근 관수 이력 테이블 (시간, 구역, 관수(초), 트리거, 결과)
+- **날짜 필터** (시작일~종료일 선택)
+- **CSV 다운로드 버튼** ← NEW
+
+#### 공통 UI/UX
+- ✅ Gradient 네비게이션 바 (보라색 그라데이션)
+- ✅ 7단계 폰트 크기 조절 (xs ~ xxl)
+- ✅ Socket.IO 실시간 연결 상태 표시
+- ✅ 터치 친화적 버튼 (≥60px 높이)
+- ✅ 반응형 디자인 (모바일/태블릿 대응)
+
+## 🔌 API 엔드포인트
+
+### 시스템
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET | `/api/status` | 시스템 상태 조회 (탱크 수위, 전압, 알림 수) |
+| POST | `/api/start_monitoring` | 모니터링 시작 |
+| POST | `/api/stop_monitoring` | 모니터링 중지 |
+| GET | `/api/data_history?hours=24` | 센서 이력 (최근 100건) |
+| GET | `/api/statistics?hours=24` | 탱크 통계 (평균/최소/최대) |
+
+### 캘리브레이션
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET | `/api/calibration` | 캘리브레이션 설정 조회 |
+| POST | `/api/calibration` | 캘리브레이션 저장 (0~5V 검증) |
+| GET | `/api/calibration/current` | 현재 실시간 센서 전압 |
+
+### 알림
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET | `/api/alerts?limit=20` | 최근 알림 목록 |
+
+### 호스건
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET | `/api/hose-gun/status` | 호스건 상태 조회 |
+| POST | `/api/hose-gun/activate` | 호스건 ON |
+| POST | `/api/hose-gun/deactivate` | 호스건 OFF |
+
+### 관수 제어 ← NEW
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET | `/api/irrigation/status` | 관수 전체 상태 (모드, 수분, 이력) |
+| POST | `/api/irrigation/mode` | 모드 변경 `{mode: auto/manual/schedule}` |
+| POST | `/api/irrigation/start` | 관수 시작 `{zone_id, duration}` |
+| POST | `/api/irrigation/stop` | 긴급 정지 |
+| GET | `/api/irrigation/sensors` | 토양 센서 현황 (캐시) |
+| POST | `/api/irrigation/sensors/read` | 토양 센서 즉시 재측정 |
+| POST | `/api/irrigation/threshold` | 구역 임계값 설정 `{zone_id, threshold}` |
+| GET | `/api/irrigation/history?limit=20` | 관수 이력 JSON |
+
+### CSV 다운로드 ← NEW
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET | `/api/download/irrigation-history` | 관수 이력 CSV (`?from=YYYY-MM-DD&to=YYYY-MM-DD`) |
+| GET | `/api/download/sensor-data` | 탱크 수위 CSV (`?from=YYYY-MM-DD&to=YYYY-MM-DD`) |
+| GET | `/api/download/files` | 다운로드 가능 파일 목록 |
+
+## 📊 시스템 성능
+
+| 항목 | 수치 |
+|------|------|
+| 탱크 수위 샘플링 주기 | 10초 (자동) |
+| 샘플 개수 | 10회/주기 (Trimmed Mean) |
+| 자동 관수 점검 주기 | 30초 |
+| 관수 구역 수 | 12구역 |
+| 토양 센서 수 | 12개 (RS-485 Modbus) |
+| 측정 정밀도 | 0.3% (전압 기준) |
+| ADC 해상도 | 16-bit (ADS1115) |
+| I2C 속도 | 400 kbit/s |
+| 알림 쿨다운 | 5분 (중복 방지) |
+| 데이터 저장 | CSV (일별 파일) |
+| 업데이트 주기 | 10초 (SocketIO) |
+| 시간 표시 | 24시간제 (HH:MM:SS) |
+| 차트 데이터 | 360개 (1시간) |
+
+## 🗓 개발 이력
+
+- **2026-02-10**: 하드웨어 설정, I2C 통신 구현, Stage 1 완료
+- **2026-02-11**: 관수 시스템 Stage 2 완료 (구역 관리)
+- **2026-02-12**: 모니터링 시스템 Stage 3 완료 (센서)
+- **2026-02-13**: 웹 인터페이스 Stage 3 완료 (대시보드)
+- **2026-02-20 (v2.0)**:
+  - ✅ 대시보드 리뉴얼: 설정 페이지와 동일한 UI/UX
+  - ✅ 차트 기능 개선: 1시간 (360개) 데이터 표시
+  - ✅ 센서 시스템 단순화: 전압 전용 모드 (0~5V)
+  - ✅ 입력 검증 강화: 3단계 검증 시스템
+  - ✅ 프로덕션 최적화: 디버그 로그 제거
+  - ✅ 캘리브레이션 시스템 완성: 소수점 3자리 정밀도
+  - ✅ 실시간 모니터링 안정화: 중복 샘플링 제거
+  - ✅ Git 정리: 백업 파일 제거, .gitignore 업데이트
+- **2026-02-21 (Stage 4)** `e56e521`:
+  - ✅ RS-485 토양 수분 센서 드라이버 구현 (Modbus RTU)
+  - ✅ AutoIrrigationController 구현 (수동/자동/스케줄)
+  - ✅ 관수 이력 메모리 저장 (최대 200건)
+  - ✅ 관수 제어 API 8개 추가
+- **2026-02-22 (Stage 5)** `e294a82`:
+  - ✅ 관수 제어 웹 UI 구현 (irrigation.html, irrigation.js)
+  - ✅ 3탭 구성: 제어 패널 / 구역별 제어 / 관수 이력
+  - ✅ 12구역 카드 (원형 게이지, 상태 배지, 수동 관수 버튼)
+  - ✅ 임계값 설정 모달 (슬라이더)
+  - ✅ Socket.IO 실시간 동기화
+  - ✅ 네비게이션 바에 관수 제어 링크 추가
+- **2026-02-22 (Stage 6)** `c3d1027`:
+  - ✅ systemd 서비스 등록 (부팅 자동 시작)
+  - ✅ 로그 관리 구성
+- **2026-02-23 (Stage 5+)**:
+  - ✅ 관수 이력 CSV 영구 저장 (irrigation_history.csv)
+  - ✅ 관수 이력 CSV 다운로드 API (날짜 필터 지원)
+  - ✅ 탱크 수위 CSV 다운로드 API (기간별 병합)
+  - ✅ irrigation.html 관수 이력 탭에 날짜 필터 + CSV 다운로드 버튼 추가
 
 ## 🔧 주요 해결 과제
 
@@ -301,95 +505,39 @@ timestamp,tank1_level,tank2_level,ch0_voltage,ch1_voltage,ch2_voltage,ch3_voltag
 - **문제**: 소수점 1자리 입력으로 정밀도 부족
 - **해결**: 0.001V 단위 입력, 소수점 3자리 처리
 
-## 📊 시스템 성능
-
-| 항목 | 수치 |
-|------|------|
-| 샘플링 주기 | 10초 (자동) |
-| 샘플 개수 | 10회/주기 |
-| 측정 정밀도 | 0.3% (전압 기준) |
-| ADC 해상도 | 16-bit (ADS1115) |
-| I2C 속도 | 400 kbit/s |
-| 알림 쿨다운 | 5분 (중복 방지) |
-| 데이터 저장 | CSV (일별 파일) |
-| 업데이트 주기 | 10초 (SocketIO) |
-| 시간 표시 | 24시간제 (HH:MM:SS) |
-| 차트 데이터 | 360개 (1시간) |
-
-## 🔌 API 엔드포인트
-
-### GET `/api/status`
-시스템 상태 조회 (탱크 수위, 전압, 알림 수)
-
-### GET `/api/calibration/current`
-현재 센서 전압 값 조회 (실시간)
-
-### GET `/api/calibration`
-현재 캘리브레이션 설정 조회
-
-### POST `/api/calibration`
-캘리브레이션 설정 저장 (0~5V 검증)
-
-### GET `/api/alerts?limit=10`
-최근 알림 조회
-
-### GET `/api/hose-gun/status`
-호스건 상태 조회
-
-### POST `/api/hose-gun/start`
-호스건 시작
-
-### POST `/api/hose-gun/stop`
-호스건 중지
-
-## 🗓 개발 이력
-
-- **2026-02-10**: 하드웨어 설정, I2C 통신 구현, Stage 1 완료
-- **2026-02-11**: 관수 시스템 Stage 2 완료 (구역 관리)
-- **2026-02-12**: 모니터링 시스템 Stage 3 완료 (센서)
-- **2026-02-13**: 웹 인터페이스 Stage 3 완료 (대시보드)
-- **2026-02-20 (v2.0)**: 
-  - ✅ **대시보드 리뉴얼**: 설정 페이지와 동일한 UI/UX
-  - ✅ **차트 기능 개선**: 1시간 (360개) 데이터 표시
-  - ✅ **센서 시스템 단순화**: 전압 전용 모드 (0~5V)
-  - ✅ **입력 검증 강화**: 3단계 검증 시스템
-  - ✅ **프로덕션 최적화**: 디버그 로그 제거
-  - ✅ **캘리브레이션 시스템 완성**: 소수점 3자리 정밀도
-  - ✅ **실시간 모니터링 안정화**: 중복 샘플링 제거
-  - ✅ **WebSocket 기반 실시간 업데이트**: 지연 없는 데이터 반영
-  - ✅ **파비콘 추가**: 브라우저 탭 아이콘
-  - ✅ **Git 정리**: 백업 파일 제거, .gitignore 업데이트
-
 ## 📝 다음 단계 (TODO)
 
-### Stage 4: 자동 관수 제어
-- [ ] 수위 기반 자동 펌프 제어
-- [ ] 수동/자동 모드 전환
-- [ ] 시간대별 관수 스케줄
+### ✅ 완료된 Stage
 
-### Stage 5: 로그 분석 페이지
-- [ ] 날짜별 과거 데이터 조회
+- [x] Stage 1 — 하드웨어 초기화 (I2C, ADS1115, MCP23017, RTC)
+- [x] Stage 2 — 센서 모니터링 & 웹 대시보드
+- [x] Stage 3 — 캘리브레이션 & 알림 시스템
+- [x] Stage 3.5 — UI 개선 & 릴레이 로직 단순화 (`7af7d47`)
+- [x] Stage 4 — RS-485 토양 센서 + 자동 관수 제어 (`e56e521`)
+- [x] Stage 5 — 관수 제어 웹 UI + CSV 다운로드 (`e294a82`)
+- [x] Stage 6 — systemd 자동 시작 + 로그 관리 (`c3d1027`)
+
+### ⏳ 예정된 Stage
+
+#### Stage 7: 로그 분석 페이지
+- [ ] 날짜별 과거 데이터 조회 (`analytics.html`)
 - [ ] 기간별 통계 (일/주/월)
-- [ ] CSV 다운로드 버튼
+- [ ] 관수 효율 분석 (수분 변화 추이 그래프)
 - [ ] 그래프 줌/팬 기능
 
-### Stage 6: 알림 시스템 고도화
+#### Stage 8: 알림 고도화
+- [ ] Telegram 봇 알림 (수위 경고, 관수 완료)
 - [ ] 이메일 알림
-- [ ] SMS 알림 (Twilio)
-- [ ] 웹 푸시 알림
-- [ ] 알림 임계값 사용자 설정
+- [ ] 알림 임계값 웹 UI 설정
 
-### Stage 7: 시스템 안정성
-- [ ] systemd 서비스 등록 (자동 시작)
-- [ ] 로그 로테이션
-- [ ] 오류 자동 복구
-- [ ] 백업 시스템
-- [ ] 데이터베이스 연동 (SQLite)
+#### Stage 9: 양액 제어 (PWM)
+- [ ] EC 기반 양액 농도 자동 조절
+- [ ] PWM 펌프 제어
 
-### Stage 8: 모바일 최적화
-- [ ] PWA (Progressive Web App) 지원
-- [ ] 오프라인 모드
-- [ ] 푸시 알림 (Service Worker)
+#### Stage 10: 안정성 & 모바일
+- [ ] SQLite 데이터베이스 마이그레이션
+- [ ] PWA (Progressive Web App)
+- [ ] 오프라인 모드 지원
 
 ## 🛠️ 문제 해결
 
@@ -397,6 +545,12 @@ timestamp,tank1_level,tank2_level,ch0_voltage,ch1_voltage,ch2_voltage,ch3_voltag
 ```bash
 i2cdetect -y 1
 # 0x20, 0x21, 0x48, 0x68 확인
+```
+
+### 서비스 상태 확인
+```bash
+sudo systemctl status smart-farm.service
+sudo journalctl -u smart-farm.service -n 50 --no-pager
 ```
 
 ### 웹 페이지가 열리지 않음
@@ -413,6 +567,20 @@ sudo netstat -tulnp | grep 5000
 # ADS1115 테스트
 cd ~/smart_farm
 python3 tests/test_ads1115.py
+```
+
+### RS-485 토양 센서 미응답
+```bash
+ls /dev/ttyUSB* /dev/ttyAMA*
+python3 -c "import minimalmodbus; print('OK')"
+```
+
+### 관수 이력 CSV 없음
+```bash
+# irrigation_history.csv는 관수 1회 실행 시 자동 생성
+ls -lh ~/smart_farm/logs/irrigation_history.csv
+# 없다면 서버 재시작
+sudo systemctl restart smart-farm.service
 ```
 
 ## 👤 개발자
