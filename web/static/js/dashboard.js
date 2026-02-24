@@ -232,6 +232,46 @@ async function updateAlertCount() {
 // 차트 초기화
 // ============================================================
 
+
+// ──────────────────────────────────────────────────────────────
+// 오늘 수위 이력 복원 (페이지 로드 시 그래프 초기 데이터)
+// ──────────────────────────────────────────────────────────────
+async function loadHistoricalData() {
+    try {
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const res = await fetch(`/api/analytics/sensor-data?from=${today}&to=${today}`);
+        const json = await res.json();
+        if (!json.success || !json.data || !json.data.length) return;
+
+        // 최근 360개(1시간) 이내만 사용
+        const rows = json.data.slice(-360);
+        chartData.labels = [];
+        chartData.tank1  = [];
+        chartData.tank2  = [];
+
+        rows.forEach(row => {
+            const ts = (row.timestamp || '').replace(' ', 'T');
+            const d  = new Date(ts);
+            if (isNaN(d.getTime())) return;
+            chartData.labels.push(
+                d.toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'})
+            );
+            chartData.tank1.push(parseFloat(row.tank1_level) || 0);
+            chartData.tank2.push(parseFloat(row.tank2_level) || 0);
+        });
+
+        if (waterChart) {
+            waterChart.data.labels          = chartData.labels;
+            waterChart.data.datasets[0].data = chartData.tank1;
+            waterChart.data.datasets[1].data = chartData.tank2;
+            waterChart.update('none');
+        }
+        console.log(`📊 수위 이력 복원: ${rows.length}건`);
+    } catch (e) {
+        console.warn('수위 이력 복원 실패:', e);
+    }
+}
+
 function initChart() {
     const ctx = document.getElementById('water-chart').getContext('2d');
     
@@ -300,6 +340,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 차트 초기화
     initChart();
+
+    // 오늘 수위 이력 복원 (새로고침/재방문 시 그래프 재구성)
+    loadHistoricalData();
     
     // 경고 목록 로드
     loadAlerts();
@@ -310,3 +353,56 @@ document.addEventListener('DOMContentLoaded', () => {
     // 10초마다 경고 카운트 업데이트
     setInterval(updateAlertCount, 10000);
 });
+
+
+// ============================================================
+//  관수 상태 실시간 업데이트  (patch_v3)
+// ============================================================
+function loadIrrigationStatus() {
+    fetch('/api/irrigation/status')
+        .then(r => r.json())
+        .then(data => updateIrrigationStatusCard(data))
+        .catch(e => console.warn('관수 상태 로드 실패:', e));
+}
+
+function updateIrrigationStatusCard(data) {
+    const modeEl     = document.getElementById('irrigationModeLabel');
+    const activeEl   = document.getElementById('irrigationActiveLabel');
+    const zoneEl     = document.getElementById('irrigationCurrentZone');
+    const countEl    = document.getElementById('irrigationCountToday');
+    const moistureEl = document.getElementById('irrigationMoistureGrid');
+
+    if (modeEl) {
+        const isAuto = data.mode === 'auto';
+        modeEl.textContent = isAuto ? '자동 모드' : '수동 모드';
+        modeEl.className = `badge ${isAuto ? 'bg-success' : 'bg-secondary'}`;
+    }
+    if (activeEl) {
+        activeEl.textContent = data.is_irrigating ? '관수 중' : '대기';
+        activeEl.className = `badge ${data.is_irrigating ? 'bg-danger' : 'bg-light text-dark'}`;
+    }
+    if (zoneEl) zoneEl.textContent = data.current_zone ? `구역 ${data.current_zone}` : '-';
+    if (countEl) countEl.textContent = data.irrigation_count_today || 0;
+
+    if (moistureEl && data.zone_moistures) {
+        moistureEl.innerHTML = Object.entries(data.zone_moistures).map(([k, v]) => {
+            const zid = k.replace('zone_','');
+            const pct = Math.round(v);
+            const color = pct < 30 ? 'bg-danger' : (pct < 50 ? 'bg-warning' : 'bg-info');
+            return `<div class="d-flex align-items-center mb-1">
+              <span class="me-2 small" style="width:40px">Z${zid}</span>
+              <div class="progress flex-grow-1" style="height:14px">
+                <div class="progress-bar ${color}" style="width:${pct}%" title="${pct}%"></div>
+              </div>
+              <span class="ms-2 small" style="width:36px">${pct}%</span>
+            </div>`;
+        }).join('');
+    }
+}
+
+// 30초마다 관수 상태 갱신
+document.addEventListener('DOMContentLoaded', () => {
+    loadIrrigationStatus();
+    setInterval(loadIrrigationStatus, 30000);
+});
+// patch_v3_irrigation_status_end

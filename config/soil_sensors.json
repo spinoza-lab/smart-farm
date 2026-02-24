@@ -8,24 +8,96 @@
     "inter_sensor_delay": 0.1
   },
   "sensors": [
-    {"zone_id": 1,  "sensor_address": 1,  "name": "구역 1",  "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 2,  "sensor_address": 2,  "name": "구역 2",  "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 3,  "sensor_address": 3,  "name": "구역 3",  "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 4,  "sensor_address": 4,  "name": "구역 4",  "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 5,  "sensor_address": 5,  "name": "구역 5",  "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 6,  "sensor_address": 6,  "name": "구역 6",  "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 7,  "sensor_address": 7,  "name": "구역 7",  "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 8,  "sensor_address": 8,  "name": "구역 8",  "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 9,  "sensor_address": 9,  "name": "구역 9",  "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 10, "sensor_address": 10, "name": "구역 10", "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 11, "sensor_address": 11, "name": "구역 11", "enabled": true, "moisture_threshold": 40.0},
-    {"zone_id": 12, "sensor_address": 12, "name": "구역 12", "enabled": true, "moisture_threshold": 40.0}
+    {
+      "zone_id": 1,
+      "sensor_address": 1,
+      "name": "구역 1",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 2,
+      "sensor_address": 2,
+      "name": "구역 2",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 3,
+      "sensor_address": 3,
+      "name": "구역 3",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 4,
+      "sensor_address": 4,
+      "name": "구역 4",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 5,
+      "sensor_address": 5,
+      "name": "구역 5",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 6,
+      "sensor_address": 6,
+      "name": "구역 6",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 7,
+      "sensor_address": 7,
+      "name": "구역 7",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 8,
+      "sensor_address": 8,
+      "name": "구역 8",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 9,
+      "sensor_address": 9,
+      "name": "구역 9",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 10,
+      "sensor_address": 10,
+      "name": "구역 10",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 11,
+      "sensor_address": 11,
+      "name": "구역 11",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    },
+    {
+      "zone_id": 12,
+      "sensor_address": 12,
+      "name": "구역 12",
+      "enabled": true,
+      "moisture_threshold": 40.0
+    }
   ],
   "irrigation": {
     "min_tank_level": 20.0,
     "irrigation_duration": 300,
     "zone_interval": 10,
-    "check_interval": 600,
+    "check_interval": 300,
     "max_zones_simultaneous": 1
   }
 }

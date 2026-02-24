@@ -92,18 +92,28 @@ class AutoIrrigationController:
     # 모드 제어
     # ──────────────────────────────────────
     def set_mode(self, mode):
-        """모드 설정: 'auto' | 'manual' | 'schedule'"""
-        if mode not in ('auto', 'manual', 'schedule'):
+        """모드 설정: 'auto' | 'manual'  (schedule → auto 자동 변환)"""
+        if mode == 'schedule':   # 하위 호환: schedule → auto
+            mode = 'auto'
+        if mode not in ('auto', 'manual'):
             return False, f"잘못된 모드: {mode}"
 
         prev = self.mode
         self.mode = mode
         print(f"🔄 관수 모드 변경: {prev} → {mode}")
 
-        if mode == 'auto' and not self.is_running:
-            self.start_monitor()
-        elif mode == 'manual' and self.is_running:
-            self.stop_monitor()
+        if mode == 'auto':
+            if not self.is_running:
+                self.start_monitor()
+            # 스케줄러 시작
+            if hasattr(self, '_scheduler') and self._scheduler                     and not self._scheduler._running:
+                self._scheduler.start()
+        elif mode == 'manual':
+            if self.is_running:
+                self.stop_monitor()
+            # 스케줄러 정지
+            if hasattr(self, '_scheduler') and self._scheduler                     and self._scheduler._running:
+                self._scheduler.stop()
 
         return True, f"모드가 {mode}로 변경되었습니다"
 
@@ -279,6 +289,12 @@ class AutoIrrigationController:
     # ──────────────────────────────────────
     # 상태 조회
     # ──────────────────────────────────────
+
+    def attach_scheduler(self, scheduler):
+        """스케줄러 주입 (순환 참조 방지용 지연 주입)"""
+        self._scheduler = scheduler
+        if self.mode == 'auto' and not scheduler._running:
+            scheduler.start()
     def get_status(self):
         return {
             'mode':           self.mode,

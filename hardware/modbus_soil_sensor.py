@@ -111,10 +111,16 @@ class SoilSensor:
         self.instrument.close_port_after_each_call = False
         self.instrument.BYTEORDER_BIG = minimalmodbus.BYTEORDER_BIG
         # minimalmodbus 2.x 호환 설정
-        if hasattr(self.instrument, 'precalculate_read_size'):
-            self.instrument.precalculate_read_size = True
-        if hasattr(self.instrument, 'clear_buffers_before_each_transaction'):
+        # __new__() 생성 시 __init__ 미호출로 내부 속성 누락 → 강제 초기화
+        if not hasattr(self.instrument, 'precalculate_read_size'):
+            self.instrument.precalculate_read_size = False   # 2.x 기본값
+        if not hasattr(self.instrument, 'clear_buffers_before_each_transaction'):
             self.instrument.clear_buffers_before_each_transaction = True
+        # 2.x 에서 추가된 필수 내부 속성 초기화
+        if not hasattr(self.instrument, 'handle_local_echo'):
+            self.instrument.handle_local_echo = False
+        if not hasattr(self.instrument, '_print_all_errors'):
+            self.instrument._print_all_errors = False
 
     def read_all(self):
         """수분, 온도, EC 3개 레지스터 동시 읽기"""

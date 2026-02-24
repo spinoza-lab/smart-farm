@@ -1,207 +1,223 @@
 """
-scheduler_new.py - 스케줄 기반 자동 관수 스케줄러 (완전 재작성)
-- AutoIrrigationController 주입 방식으로 의존성 단순화
-- schedules.json 직접 읽기 (ConfigManager 불필요)
-- datetime.now() 사용 (RTCManager 제거)
-- 요일 체계 통일: 0=월요일 ~ 6=일요일 (Python weekday() 기준)
+스마트 관수 시스템 - 스케줄러 v2
+스케줄 타입: schedule(요일+시간) / routine(날짜시간 기준 N일 반복)
+인터록: auto_controller.is_irrigating 플래그 확인 후 대기 실행
+유예창: 10분(600초)
 """
-
-import json
-import threading
-import logging
+import json, logging, threading, time
 from datetime import datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+SCHEDULES_PATH   = Path("/home/pi/smart_farm/config/schedules.json")
+GRACE_SECONDS    = 600
+INTERLOCK_WAIT   = 10
+INTERLOCK_TIMEOUT= 3600
+CHECK_INTERVAL   = 30
+
+def _load_schedules():
+    if not SCHEDULES_PATH.exists():
+        SCHEDULES_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SCHEDULES_PATH.write_text(json.dumps({"schedules":[]}, indent=2))
+        return []
+    try:
+        return json.loads(SCHEDULES_PATH.read_text()).get("schedules", [])
+    except Exception as e:
+        logger.error(f"schedules.json 로드 실패: {e}"); return []
+
+def _save_schedules(schedules):
+    try:
+        SCHEDULES_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SCHEDULES_PATH.write_text(json.dumps({"schedules":schedules}, indent=2, ensure_ascii=False))
+    except Exception as e:
+        logger.error(f"schedules.json 저장 실패: {e}")
+
+def _should_run_schedule(entry, now):
+    try:
+        h, m = map(int, entry["start_time"].split(":"))
+        target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        diff = (now - target).total_seconds()
+        return (now.weekday() in entry.get("days",[])) and (0 <= diff <= GRACE_SECONDS)
+    except Exception as e:
+        logger.error(f"스케줄 체크 오류: {e}"); return False
+
+def _should_run_routine(entry, now):
+    try:
+        start_dt = datetime.strptime(f"{entry['start_date']} {entry['start_time']}:00", "%Y-%m-%d %H:%M:%S")
+        if now < start_dt: return False
+        interval_secs = max(int(entry.get("interval_days",1)),1) * 86400
+        phase = (now - start_dt).total_seconds() % interval_secs
+        return 0 <= phase <= GRACE_SECONDS
+    except Exception as e:
+        logger.error(f"루틴 체크 오류: {e}"); return False
+
+def _next_run_schedule(entry, now):
+    try:
+        h, m = map(int, entry["start_time"].split(":"))
+        days = entry.get("days",[])
+        for delta in range(8):
+            c = (now+timedelta(days=delta)).replace(hour=h,minute=m,second=0,microsecond=0)
+            if c > now and c.weekday() in days: return c
+    except: pass; return None
+
+def _next_run_routine(entry, now):
+    try:
+        start_dt = datetime.strptime(f"{entry['start_date']} {entry['start_time']}:00", "%Y-%m-%d %H:%M:%S")
+        if now < start_dt: return start_dt
+        iv = max(int(entry.get("interval_days",1)),1) * 86400
+        elapsed = (now - start_dt).total_seconds()
+        return start_dt + timedelta(seconds=(int(elapsed//iv)+1)*iv)
+    except: return None
 
 class IrrigationScheduler:
-    """
-    schedules.json을 주기적으로 읽어 설정된 시간/요일에 관수를 실행하는 스케줄러.
-    AutoIrrigationController.irrigate_zone()을 호출하여 실제 관수를 수행한다.
-    """
-
-    def __init__(self, auto_controller, schedules_path: str):
-        """
-        :param auto_controller: AutoIrrigationController 인스턴스
-        :param schedules_path: schedules.json 파일 경로 (절대경로 권장)
-        """
-        self.auto_controller = auto_controller
-        self.schedules_path = Path(schedules_path)
-        self.check_interval = 30          # 초 단위 점검 주기
-        self.running = False
-        self._thread = None
-        # {schedule_id: 'YYYY-MM-DD'} 형식으로 오늘 이미 실행된 스케줄 기록
-        self._executed_today: dict[int, str] = {}
-        logger.info("[Scheduler] 초기화 완료 (schedules: %s)", self.schedules_path)
-
-    # ──────────────────────────────────────────
-    # 공개 메서드
-    # ──────────────────────────────────────────
+    def __init__(self, auto_controller):
+        self.controller = auto_controller
+        self._running   = False
+        self._thread    = None
+        self._executed_keys = set()
+        self._queue     = []
+        self._queue_lock= threading.Lock()
 
     def start(self):
-        """백그라운드 데몬 스레드로 스케줄러를 시작한다."""
-        if self.running:
-            logger.warning("[Scheduler] 이미 실행 중입니다.")
-            return
-        self.running = True
-        self._thread = threading.Thread(
-            target=self._run_loop, name="IrrigationScheduler", daemon=True
-        )
+        if self._running: return
+        self._running = True
+        self._thread  = threading.Thread(target=self._run_loop, daemon=True, name="IrrigationScheduler")
         self._thread.start()
-        logger.info("[Scheduler] 스케줄러 시작 (interval=%ds)", self.check_interval)
+        logger.info("IrrigationScheduler 시작")
 
     def stop(self):
-        """스케줄러를 중지한다."""
-        self.running = False
-        logger.info("[Scheduler] 스케줄러 중지 요청")
-
-    def get_next_schedule(self) -> dict | None:
-        """
-        지금 이후 가장 빨리 실행될 스케줄 정보를 반환한다.
-        반환 형식: {schedule_id, zone_id, zone_name, start_time, duration, days, minutes_until}
-        실행 예정 스케줄이 없으면 None 반환.
-        """
-        schedules = self._load_schedules()
-        now = datetime.now()
-        today_str = now.strftime("%H:%M")
-        today_wd = now.weekday()          # 0=월 ~ 6=일
-
-        candidates = []
-        for s in schedules:
-            if not s.get("enabled", True):
-                continue
-            days = s.get("days")          # None 또는 [0,1,...] 리스트
-
-            # 오늘 실행 가능 여부 확인
-            if days is None or today_wd in days:
-                t = s["start_time"]       # "HH:MM"
-                if t > today_str:         # 아직 실행 전
-                    h, m = map(int, t.split(":"))
-                    run_dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
-                    minutes_until = int((run_dt - now).total_seconds() / 60)
-                    candidates.append({**s, "minutes_until": minutes_until, "run_dt": run_dt})
-
-            # 내일 이후 체크 (오늘 스케줄 없을 때)
-            if not candidates:
-                for delta in range(1, 8):
-                    future_dt = now + timedelta(days=delta)
-                    future_wd = future_dt.weekday()
-                    if days is None or future_wd in days:
-                        h, m = map(int, s["start_time"].split(":"))
-                        run_dt = future_dt.replace(
-                            hour=h, minute=m, second=0, microsecond=0
-                        )
-                        minutes_until = int((run_dt - now).total_seconds() / 60)
-                        candidates.append(
-                            {**s, "minutes_until": minutes_until, "run_dt": run_dt}
-                        )
-                        break
-
-        if not candidates:
-            return None
-
-        next_s = min(candidates, key=lambda x: x["run_dt"])
-        next_s.pop("run_dt", None)
-        return next_s
-
-    # ──────────────────────────────────────────
-    # 내부 메서드
-    # ──────────────────────────────────────────
+        self._running = False
+        if self._thread and self._thread.is_alive(): self._thread.join(timeout=5)
+        logger.info("IrrigationScheduler 정지")
 
     def _run_loop(self):
-        """메인 루프: check_interval 초마다 스케줄 점검."""
-        logger.info("[Scheduler] 루프 진입")
-        while self.running:
+        while self._running:
             try:
-                self._check_and_execute()
-            except Exception as exc:
-                logger.error("[Scheduler] 점검 중 오류: %s", exc, exc_info=True)
-            # check_interval 을 1초 단위로 나눠 sleep 해야 stop() 이 빠르게 반응
-            for _ in range(self.check_interval):
-                if not self.running:
-                    break
-                import time
-                time.sleep(1)
-        logger.info("[Scheduler] 루프 종료")
+                self._check_and_queue()
+                self._process_queue()
+            except Exception as e:
+                logger.error(f"스케줄 루프 예외: {e}")
+            time.sleep(CHECK_INTERVAL)
 
-    def _load_schedules(self) -> list:
-        """schedules.json을 읽어 리스트로 반환. 파일 없으면 빈 리스트."""
-        try:
-            if not self.schedules_path.exists():
-                return []
-            with open(self.schedules_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, list) else data.get('schedules', [])
-        except Exception as exc:
-            logger.error("[Scheduler] schedules.json 로드 실패: %s", exc)
-            return []
-
-    def _check_and_execute(self):
-        """현재 시각과 스케줄을 비교하여 실행 조건이 맞으면 관수를 시작한다."""
-        schedules = self._load_schedules()
-        if not schedules:
-            return
-
+    def _check_and_queue(self):
         now = datetime.now()
-        current_time = now.strftime("%H:%M")  # "HH:MM"
-        current_wd   = now.weekday()           # 0=월 ~ 6=일
-        today_str    = now.strftime("%Y-%m-%d")
+        hour_key = now.strftime("%Y-%m-%d %H")
+        for entry in _load_schedules():
+            if not entry.get("enabled", True): continue
+            eid = entry.get("id")
+            exec_key = (eid, hour_key)
+            if exec_key in self._executed_keys: continue
+            etype = entry.get("type","schedule")
+            should = _should_run_schedule(entry,now) if etype=="schedule" else (_should_run_routine(entry,now) if etype=="routine" else False)
+            if should:
+                with self._queue_lock:
+                    if not any(j["id"]==eid for j in self._queue):
+                        logger.info(f"[스케줄러] 큐 추가: id={eid} type={etype} zone={entry.get('zone_id')}")
+                        self._queue.append(dict(entry))
+                        self._executed_keys.add(exec_key)
+                        if len(self._executed_keys)>500:
+                            for k in sorted(self._executed_keys)[:250]: self._executed_keys.discard(k)
 
-        for s in schedules:
-            sid = s.get("id")
-            if sid is None:
-                continue
-            if not s.get("enabled", True):
-                continue
-            if s.get("start_time") != current_time:
-                continue
-            # 오늘 이미 실행했으면 스킵
-            if self._executed_today.get(sid) == today_str:
-                continue
-            # 요일 체크: days 필드가 없거나 빈 리스트면 매일 실행
-            days = s.get("days")
-            if days and current_wd not in days:
-                continue
+    def _process_queue(self):
+        with self._queue_lock:
+            if not self._queue: return
+            job = self._queue[0]
+        self._execute_job(job)
+        with self._queue_lock:
+            if self._queue and self._queue[0].get("id")==job.get("id"): self._queue.pop(0)
 
-            # ✅ 실행 조건 충족
-            logger.info(
-                "[Scheduler] 스케줄 #%d 실행 시작 - 구역 %d, 시각 %s",
-                sid, s.get("zone_id", "?"), current_time,
-            )
-            self._executed_today[sid] = today_str
-            # 별도 스레드로 실행(블로킹 방지)
-            t = threading.Thread(
-                target=self._execute_schedule,
-                args=(s,),
-                daemon=True,
-                name=f"sched-{sid}",
-            )
-            t.start()
-
-    def _execute_schedule(self, schedule: dict):
-        """실제 관수 실행 (별도 스레드)."""
-        sid       = schedule.get("id")
-        zone_id   = schedule.get("zone_id")
-        duration  = schedule.get("duration", 300)
-        zone_name = schedule.get("zone_name", f"구역 {zone_id}")
-
-        logger.info(
-            "[Scheduler] 스케줄 #%d 실행: %s, %d초 관수", sid, zone_name, duration
-        )
+    def _execute_job(self, entry):
+        zone_id        = entry.get("zone_id",1)
+        duration       = entry.get("duration",300)
+        check_moisture = entry.get("check_moisture",False)
+        eid            = entry.get("id","?")
+        etype          = entry.get("type","schedule")
+        logger.info(f"[스케줄러] 실행 대기: id={eid} zone={zone_id} dur={duration}s check_moisture={check_moisture}")
+        waited = 0
+        while getattr(self.controller,"is_irrigating",False):
+            if waited >= INTERLOCK_TIMEOUT:
+                logger.warning(f"[스케줄러] 인터록 타임아웃 → 취소: id={eid}"); return
+            logger.debug(f"[스케줄러] 관수중 대기: {waited}s")
+            time.sleep(INTERLOCK_WAIT); waited += INTERLOCK_WAIT
+            if not self._running: return
+        if check_moisture and etype=="routine":
+            try:
+                sd = self.controller.get_sensor_data()
+                m  = sd.get(f"zone_{zone_id}",{}).get("moisture",100)
+                th = self.controller.thresholds.get(str(zone_id),40)
+                if m >= th:
+                    logger.info(f"[스케줄러] 수분 충분 스킵: zone={zone_id} {m}%>={th}%"); return
+            except Exception as e:
+                logger.warning(f"[스케줄러] 수분 체크 실패(계속): {e}")
+        logger.info(f"[스케줄러] 관수 실행: id={eid} zone={zone_id} {duration}s")
         try:
-            result = self.auto_controller.irrigate_zone(
-                zone_id=zone_id,
-                duration=duration,
-            )
-            success = result[0] if isinstance(result, tuple) else result
-            if success:
-                logger.info("[Scheduler] 스케줄 #%d 관수 완료 (%s)", sid, zone_name)
-                print(f"[Scheduler] ✅ 스케줄 #{sid} 관수 완료: {zone_name}")
-            else:
-                logger.warning("[Scheduler] 스케줄 #%d 관수 실패 (%s)", sid, zone_name)
-                print(f"[Scheduler] ⚠️  스케줄 #{sid} 관수 실패: {zone_name}")
-        except Exception as exc:
-            logger.error(
-                "[Scheduler] 스케줄 #%d 관수 중 예외: %s", sid, exc, exc_info=True
-            )
+            ok = self.controller.start_zone_irrigation(zone_id=zone_id, duration=duration, trigger="scheduler")
+            logger.info(f"[스케줄러] 완료: id={eid} zone={zone_id} ok={ok}")
+        except Exception as e:
+            logger.error(f"[스케줄러] 예외: id={eid}: {e}")
+
+    # ── 외부 API ──────────────────────────────────────────────────────────────
+    def get_all_schedules(self):
+        return _load_schedules()
+
+    def add_schedule(self, data):
+        schedules = _load_schedules()
+        new_id = max((s.get("id",0) for s in schedules), default=0) + 1
+        now_str= datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        entry  = {"id":new_id,"type":data.get("type","schedule"),
+                  "zone_id":int(data.get("zone_id",1)),
+                  "duration":int(data.get("duration",300)),
+                  "enabled":True,"created_at":now_str}
+        if entry["type"]=="schedule":
+            entry["start_time"] = data.get("start_time","06:00")
+            entry["days"]       = data.get("days",[])
+        elif entry["type"]=="routine":
+            entry["start_date"]     = data.get("start_date",datetime.now().strftime("%Y-%m-%d"))
+            entry["start_time"]     = data.get("start_time","06:00")
+            entry["interval_days"]  = int(data.get("interval_days",1))
+            entry["check_moisture"] = bool(data.get("check_moisture",False))
+        schedules.append(entry)
+        _save_schedules(schedules)
+        logger.info(f"스케줄 추가: id={new_id} type={entry['type']}")
+        return entry
+
+    def update_schedule(self, schedule_id, data):
+        schedules = _load_schedules()
+        for i,s in enumerate(schedules):
+            if s.get("id")==schedule_id:
+                s.update({k:v for k,v in data.items() if k not in ("id","created_at")})
+                schedules[i]=s; _save_schedules(schedules)
+                for k in {k for k in self._executed_keys if k[0]==schedule_id}: self._executed_keys.discard(k)
+                return True
+        return False
+
+    def delete_schedule(self, schedule_id):
+        schedules = _load_schedules()
+        new_list = [s for s in schedules if s.get("id")!=schedule_id]
+        if len(new_list)==len(schedules): return False
+        _save_schedules(new_list)
+        for k in {k for k in self._executed_keys if k[0]==schedule_id}: self._executed_keys.discard(k)
+        return True
+
+    def toggle_schedule(self, schedule_id):
+        schedules = _load_schedules()
+        for i,s in enumerate(schedules):
+            if s.get("id")==schedule_id:
+                s["enabled"]=not s.get("enabled",True); schedules[i]=s; _save_schedules(schedules)
+                return {"id":schedule_id,"enabled":s["enabled"]}
+        return {}
+
+    def get_next_schedules(self, limit=5):
+        now = datetime.now(); result = []
+        for entry in _load_schedules():
+            if not entry.get("enabled",True): continue
+            etype = entry.get("type","schedule")
+            ndt   = _next_run_schedule(entry,now) if etype=="schedule" else (_next_run_routine(entry,now) if etype=="routine" else None)
+            if ndt:
+                result.append({"id":entry.get("id"),"type":etype,
+                               "zone_id":entry.get("zone_id"),
+                               "next_run":ndt.strftime("%Y-%m-%d %H:%M"),
+                               "duration":entry.get("duration")})
+        result.sort(key=lambda x:x["next_run"])
+        return result[:limit]

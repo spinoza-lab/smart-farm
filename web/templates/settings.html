@@ -252,6 +252,13 @@
                 </button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="schedule-tab" data-bs-toggle="tab"
+                        data-bs-target="#schedule-pane" type="button"
+                        onclick="loadSchedules()">
+                    <i class="bi bi-calendar-week"></i> 스케줄 관리
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link" id="hose-gun-tab" data-bs-toggle="tab" 
                         data-bs-target="#hose-gun" type="button">
                     <i class="bi bi-water"></i> 호스건 설정
@@ -428,17 +435,17 @@
                                     </label>
                                     <div class="number-input-group">
                                         <button class="btn btn-secondary btn-number"
-                                                onclick="adjustConfigValue('checkInterval', -60)">
+                                                onclick="adjustConfigValue('checkInterval', -1)">
                                             <i class="bi bi-dash"></i>
                                         </button>
                                         <input type="number" class="form-control" id="checkInterval"
-                                               value="600" min="60" max="3600" step="60">
+                                               value="10" min="1" max="1440" step="60">
                                         <button class="btn btn-secondary btn-number"
-                                                onclick="adjustConfigValue('checkInterval', 60)">
+                                                onclick="adjustConfigValue('checkInterval', 1)">
                                             <i class="bi bi-plus"></i>
                                         </button>
                                     </div>
-                                    <small class="text-muted">초 단위 (<span id="checkIntervalMin">10</span>분 주기)</small>
+                                    <small class="text-muted">분 단위</small>
                                 </div>
 
                                 <!-- 기본 관수 시간 -->
@@ -448,17 +455,17 @@
                                     </label>
                                     <div class="number-input-group">
                                         <button class="btn btn-secondary btn-number"
-                                                onclick="adjustConfigValue('irrigationDuration', -30)">
+                                                onclick="adjustConfigValue('irrigationDuration', -1)">
                                             <i class="bi bi-dash"></i>
                                         </button>
                                         <input type="number" class="form-control" id="irrigationDuration"
-                                               value="300" min="10" max="3600" step="30">
+                                               value="5" min="1" max="60" step="30">
                                         <button class="btn btn-secondary btn-number"
-                                                onclick="adjustConfigValue('irrigationDuration', 30)">
+                                                onclick="adjustConfigValue('irrigationDuration', 1)">
                                             <i class="bi bi-plus"></i>
                                         </button>
                                     </div>
-                                    <small class="text-muted">초 단위 (<span id="irrigationDurationMin">5</span>분)</small>
+                                    <small class="text-muted">분 단위</small>
                                 </div>
 
                                 <!-- 최소 탱크 수위 -->
@@ -547,40 +554,6 @@
                         </div>
                     </div><!-- /col-lg-7 -->
                 </div><!-- /row -->
-
-                <!-- ③ 스케줄 관리 카드 -->
-                <div class="card mt-3">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="bi bi-calendar-week"></i> 스케줄 관수 설정</span>
-                        <button class="btn btn-success" onclick="openScheduleModal()">
-                            <i class="bi bi-plus-circle"></i> 스케줄 추가
-                        </button>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0" id="scheduleTable">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th style="width:70px">ID</th>
-                                        <th>구역</th>
-                                        <th>시작 시간</th>
-                                        <th>관수 시간</th>
-                                        <th>요일</th>
-                                        <th style="width:100px">활성</th>
-                                        <th style="width:80px">삭제</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="scheduleTableBody">
-                                    <tr>
-                                        <td colspan="7" class="text-center text-muted py-4">
-                                            <i class="bi bi-calendar-x"></i> 등록된 스케줄이 없습니다
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
 
             </div><!-- /tab-pane auto-control -->
 
@@ -671,6 +644,62 @@
             </div><!-- /scheduleModal -->
 
 
+
+            <!-- 스케줄 관리 탭 (분리됨) -->
+            <div class="tab-pane fade" id="schedule-pane" role="tabpanel">
+
+                <!-- 다음 실행 정보 -->
+                <div class="alert alert-info d-flex align-items-center gap-2 mb-3" id="nextScheduleAlert">
+                    <i class="bi bi-clock-fill fs-5"></i>
+                    <div>
+                        <strong>다음 실행:</strong>
+                        <span id="nextScheduleInfo">로딩 중...</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary ms-auto" onclick="loadNextSchedule()">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-calendar-week"></i> 스케줄 관수 설정</span>
+                        <button class="btn btn-success" onclick="openScheduleModal()">
+                            <i class="bi bi-plus-circle"></i> 스케줄 추가
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0" id="scheduleTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:70px">타입</th>
+                                        <th>구역</th>
+                                        <th>조건</th>
+                                        <th>관수 시간</th>
+                                        <th style="width:80px">수분체크</th>
+                                        <th style="width:90px">상태</th>
+                                        <th style="width:80px">관리</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="scheduleTableBody">
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted py-4">
+                                            <i class="bi bi-calendar-x"></i> 등록된 스케줄이 없습니다
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-secondary mt-3">
+                    <i class="bi bi-info-circle"></i>
+                    스케줄 모드는 <strong>자동 관수 설정 탭</strong>에서 모드를 <strong>스케줄</strong>로 변경해야 활성화됩니다.
+                </div>
+
+            </div><!-- /tab-pane schedule-pane -->
+
             <!-- 호스건 설정 탭 -->
             <div class="tab-pane fade" id="hose-gun" role="tabpanel">
                 <div class="card">
@@ -717,3 +746,135 @@
 
 </body>
 </html>
+
+
+<!-- ── 스케줄/루틴 추가 모달 (patch_v3b) ── -->
+<div class="modal fade" id="addScheduleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-calendar-plus"></i> 스케줄 추가</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- 타입 선택 -->
+        <div class="mb-3">
+          <label class="form-label fw-bold">스케줄 타입</label>
+          <div class="btn-group w-100" role="group">
+            <button type="button" class="btn btn-primary active" id="btnTypeSchedule"
+                    onclick="selectScheduleType('schedule')">
+              <i class="bi bi-calendar-week"></i> 시간 스케줄
+            </button>
+            <button type="button" class="btn btn-outline-success" id="btnTypeRoutine"
+                    onclick="selectScheduleType('routine')">
+              <i class="bi bi-arrow-repeat"></i> 루틴 (N일 반복)
+            </button>
+          </div>
+          <input type="hidden" id="newScheduleType" value="schedule">
+        </div>
+        <hr class="my-2">
+
+        <!-- 공통: 구역 + 관수시간 -->
+        <div class="row mb-3">
+          <div class="col-6">
+            <label class="form-label">구역</label>
+            <select class="form-select form-select-sm" id="newScheduleZone">
+              <option value="0">전체 구역</option>
+              <option value="1">구역 1</option><option value="2">구역 2</option>
+              <option value="3">구역 3</option><option value="4">구역 4</option>
+              <option value="5">구역 5</option><option value="6">구역 6</option>
+              <option value="7">구역 7</option><option value="8">구역 8</option>
+              <option value="9">구역 9</option><option value="10">구역 10</option>
+              <option value="11">구역 11</option><option value="12">구역 12</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label">관수 시간 (분)</label>
+            <input type="number" class="form-control form-control-sm"
+                   id="newScheduleDuration" value="5" min="1" max="60">
+          </div>
+        </div>
+
+        <!-- 시간 스케줄 전용 -->
+        <div id="scheduleOnlyFields">
+          <div class="mb-3">
+            <label class="form-label">시작 시간</label>
+            <input type="time" class="form-control form-control-sm"
+                   id="newScheduleTime" value="06:00">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">반복 요일 <small class="text-muted">(1개 이상)</small></label>
+            <div class="d-flex gap-1 flex-wrap">
+              <button type="button" class="btn btn-sm btn-outline-secondary day-sel-btn" data-day="0">월</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary day-sel-btn" data-day="1">화</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary day-sel-btn" data-day="2">수</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary day-sel-btn" data-day="3">목</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary day-sel-btn" data-day="4">금</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary day-sel-btn" data-day="5">토</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary day-sel-btn" data-day="6">일</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 루틴 전용 -->
+        <div id="routineOnlyFields" style="display:none;">
+          <div class="row mb-3">
+            <div class="col-6">
+              <label class="form-label">시작 날짜</label>
+              <input type="date" class="form-control form-control-sm" id="newRoutineDate">
+            </div>
+            <div class="col-6">
+              <label class="form-label">시작 시간</label>
+              <input type="time" class="form-control form-control-sm"
+                     id="newRoutineTime" value="06:00">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">반복 간격</label>
+            <div class="input-group input-group-sm">
+              <input type="number" class="form-control" id="newRoutineInterval"
+                     value="1" min="1" max="365">
+              <span class="input-group-text">일마다</span>
+            </div>
+            <div class="mt-2 d-flex gap-1 flex-wrap">
+              <small class="text-muted me-1 align-self-center">프리셋:</small>
+              <button type="button" class="btn btn-xs btn-outline-secondary"
+                      onclick="document.getElementById('newRoutineInterval').value=1">매일</button>
+              <button type="button" class="btn btn-xs btn-outline-secondary"
+                      onclick="document.getElementById('newRoutineInterval').value=2">2일</button>
+              <button type="button" class="btn btn-xs btn-outline-secondary"
+                      onclick="document.getElementById('newRoutineInterval').value=3">3일</button>
+              <button type="button" class="btn btn-xs btn-outline-secondary"
+                      onclick="document.getElementById('newRoutineInterval').value=7">매주</button>
+              <button type="button" class="btn btn-xs btn-outline-secondary"
+                      onclick="document.getElementById('newRoutineInterval').value=14">격주</button>
+              <button type="button" class="btn btn-xs btn-outline-secondary"
+                      onclick="document.getElementById('newRoutineInterval').value=30">매월</button>
+            </div>
+          </div>
+          <div class="mb-2">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="newRoutineCheckMoisture">
+              <label class="form-check-label" for="newRoutineCheckMoisture">
+                <i class="bi bi-droplet-half text-primary"></i>
+                수분 부족 시에만 실행
+                <small class="text-muted d-block">(임계값 미만일 때만 관수)</small>
+              </label>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" class="btn btn-primary" onclick="saveNewSchedule()">
+          <i class="bi bi-check-circle"></i> 저장
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ── /스케줄 모달 (patch_v3b) ── -->
+
+<!-- // patch_v3b_modal -->

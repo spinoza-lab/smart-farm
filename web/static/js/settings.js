@@ -404,8 +404,8 @@ function loadIrrigationConfig() {
         .then(data => {
             if (!data.success) return;
             const cfg = data.config;
-            document.getElementById('checkInterval').value      = cfg.check_interval       ?? 600;
-            document.getElementById('irrigationDuration').value = cfg.irrigation_duration  ?? 300;
+            document.getElementById('checkInterval').value      = Math.round((cfg.check_interval ?? 600) / 60);
+            document.getElementById('irrigationDuration').value = Math.round((cfg.irrigation_duration ?? 300) / 60);
             document.getElementById('minTankLevel').value       = cfg.min_tank_level       ?? 20;
             document.getElementById('zoneInterval').value       = cfg.zone_interval        ?? 10;
             updateConfigLabels();
@@ -443,15 +443,15 @@ function loadIrrigationConfig() {
 // ── ② 설정 저장 ───────────────────────────────────────────
 function saveIrrigationConfig() {
     const cfg = {
-        check_interval:      parseInt(document.getElementById('checkInterval').value),
-        irrigation_duration: parseInt(document.getElementById('irrigationDuration').value),
+        check_interval:      parseInt(document.getElementById('checkInterval').value) * 60,
+        irrigation_duration: parseInt(document.getElementById('irrigationDuration').value) * 60,
         min_tank_level:      parseFloat(document.getElementById('minTankLevel').value),
         zone_interval:       parseInt(document.getElementById('zoneInterval').value)
     };
 
     // 유효성 검증
     if (cfg.check_interval < 60)      { showAlert('체크 주기는 60초 이상이어야 합니다.', 'warning'); return; }
-    if (cfg.irrigation_duration < 10) { showAlert('관수 시간은 10초 이상이어야 합니다.', 'warning'); return; }
+    if (cfg.irrigation_duration < 60) { showAlert('관수 시간은 1분 이상이어야 합니다.', 'warning'); return; }
     if (cfg.min_tank_level < 5)       { showAlert('최소 탱크 수위는 5% 이상이어야 합니다.', 'warning'); return; }
 
     fetch('/api/irrigation/config', {
@@ -523,8 +523,8 @@ function adjustConfigValue(fieldId, delta) {
 }
 
 function updateConfigLabels() {
-    const ci  = parseInt(document.getElementById('checkInterval')?.value || 600);
-    const dur = parseInt(document.getElementById('irrigationDuration')?.value || 300);
+    const ci  = parseInt(document.getElementById('checkInterval')?.value || 10);
+    const dur = parseInt(document.getElementById('irrigationDuration')?.value || 5);
 
     const ciLbl = document.getElementById('checkIntervalMin');
     if (ciLbl) ciLbl.textContent = ci >= 60 ? Math.floor(ci / 60) + '분' : ci + '초';
@@ -744,3 +744,137 @@ function deleteSchedule(id) {
         })
         .catch(e => showAlert('삭제 오류: ' + e.message, 'danger'));
 }
+
+// ─────────────────────────────────────────────────
+// 다음 실행 스케줄 조회
+// ─────────────────────────────────────────────────
+async function loadNextSchedule() {
+    try {
+        const res = await fetch('/api/schedules/next');
+        const json = await res.json();
+        const el = document.getElementById('nextScheduleInfo');
+        if (!el) return;
+        if (json.success && json.next_schedule) {
+            const s = json.next_schedule;
+            const days = s.days && s.days.length
+                ? s.days.map(d=>['월','화','수','목','금','토','일'][d]).join('/')
+                : '매일';
+            el.textContent =
+                `구역 ${s.zone_id} · ${s.start_time} · ${Math.round(s.duration/60)}분 (${days}) — 약 ${s.minutes_until}분 후`;
+        } else {
+            el.textContent = '예정된 스케줄 없음';
+        }
+    } catch(e) {
+        console.warn('다음 스케줄 조회 실패:', e);
+    }
+}
+
+
+
+// ── 스케줄 모달 함수 (patch_v3b) ────────────────────────────────────────────
+function openScheduleModal() {
+    // 폼 초기화
+    document.getElementById('newScheduleType').value = 'schedule';
+    document.getElementById('newScheduleZone').value = '1';
+    document.getElementById('newScheduleDuration').value = '300';
+    document.getElementById('newScheduleTime').value = '06:00';
+    document.getElementById('newRoutineTime').value = '06:00';
+    document.getElementById('newRoutineInterval').value = '1';
+    document.getElementById('newRoutineCheckMoisture').checked = false;
+    // 오늘 날짜 기본값
+    const today = new Date().toISOString().slice(0,10);
+    document.getElementById('newRoutineDate').value = today;
+    // 요일 버튼 초기화
+    document.querySelectorAll('.day-sel-btn').forEach(b => b.classList.remove('active','btn-primary'));
+    document.querySelectorAll('.day-sel-btn').forEach(b => {
+        b.classList.remove('btn-primary'); b.classList.add('btn-outline-secondary');
+    });
+    // 타입 UI 초기화
+    selectScheduleType('schedule');
+    new bootstrap.Modal(document.getElementById('addScheduleModal')).show();
+}
+
+function selectScheduleType(type) {
+    document.getElementById('newScheduleType').value = type;
+    const isSched = (type === 'schedule');
+    document.getElementById('scheduleOnlyFields').style.display = isSched ? '' : 'none';
+    document.getElementById('routineOnlyFields').style.display  = isSched ? 'none' : '';
+    document.getElementById('btnTypeSchedule').className =
+        'btn ' + (isSched ? 'btn-primary' : 'btn-outline-primary');
+    document.getElementById('btnTypeRoutine').className =
+        'btn ' + (!isSched ? 'btn-success' : 'btn-outline-success');
+}
+
+function saveNewSchedule() {
+    const type     = document.getElementById('newScheduleType').value;
+    const zone_id  = parseInt(document.getElementById('newScheduleZone').value);
+    const duration = parseInt(document.getElementById('newScheduleDuration').value) * 60;
+
+    if (!duration || duration < 60) {
+        showSettingsAlert('관수 시간을 1분 이상 입력하세요.', 'danger'); return;
+    }
+
+    let payload = { type, zone_id, duration };
+
+    if (type === 'schedule') {
+        const start_time = document.getElementById('newScheduleTime').value;
+        const days = [...document.querySelectorAll('.day-sel-btn.active')]
+                         .map(b => parseInt(b.dataset.day));
+        if (!start_time) { showSettingsAlert('시작 시간을 입력하세요.', 'danger'); return; }
+        if (!days.length){ showSettingsAlert('요일을 1개 이상 선택하세요.', 'danger'); return; }
+        payload = { ...payload, start_time, days };
+    } else {
+        const start_date    = document.getElementById('newRoutineDate').value;
+        const start_time    = document.getElementById('newRoutineTime').value;
+        const interval_days = parseInt(document.getElementById('newRoutineInterval').value);
+        const check_moisture= document.getElementById('newRoutineCheckMoisture').checked;
+        if (!start_date || !start_time) {
+            showSettingsAlert('시작 날짜와 시간을 입력하세요.', 'danger'); return;
+        }
+        if (!interval_days || interval_days < 1) {
+            showSettingsAlert('반복 간격을 1일 이상으로 설정하세요.', 'danger'); return;
+        }
+        payload = { ...payload, start_date, start_time, interval_days, check_moisture };
+    }
+
+    fetch('/api/schedules', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(
+                document.getElementById('addScheduleModal'))?.hide();
+            loadSchedules();
+            showSettingsAlert('스케줄이 저장되었습니다.', 'success');
+        } else {
+            showSettingsAlert(data.message || '저장 실패', 'danger');
+        }
+    })
+    .catch(e => showSettingsAlert('오류: ' + e.message, 'danger'));
+}
+
+// 요일 버튼 토글 (이벤트 위임)
+document.addEventListener('click', e => {
+    const btn = e.target.closest('.day-sel-btn');
+    if (!btn) return;
+    const isActive = btn.classList.contains('active');
+    btn.classList.toggle('active', !isActive);
+    btn.classList.toggle('btn-primary', !isActive);
+    btn.classList.toggle('btn-outline-secondary', isActive);
+});
+
+function showSettingsAlert(msg, type='info') {
+    // 기존 showAlert 있으면 사용, 없으면 alert
+    if (typeof showAlert === 'function') { showAlert(msg, type); return; }
+    const container = document.querySelector('.container-fluid') || document.body;
+    const div = document.createElement('div');
+    div.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-2`;
+    div.style.zIndex = '9999';
+    div.innerHTML = msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    container.prepend(div);
+    setTimeout(() => div.remove(), 4000);
+}
+// patch_v3b_modal_js

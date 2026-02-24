@@ -70,7 +70,8 @@
     <div>
       <a href="/" class="btn btn-light me-2"><i class="bi bi-speedometer2"></i> 대시보드</a>
       <a href="/irrigation" class="btn btn-warning me-2"><i class="bi bi-water"></i> 관수 제어</a>
-      <a href="/settings" class="btn btn-outline-light"><i class="bi bi-gear-fill"></i> 설정</a>
+      <a href="/analytics" class="btn btn-info me-2"><i class="bi bi-bar-chart-line"></i> 분석</a>
+            <a href="/settings" class="btn btn-outline-light"><i class="bi bi-gear-fill"></i> 설정</a>
     </div>
   </div>
 </nav>
@@ -84,7 +85,6 @@
   <ul class="nav nav-tabs mb-4" id="irrigationTabs" role="tablist">
     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#control" type="button"><i class="bi bi-toggles"></i> 제어 패널</button></li>
     <li class="nav-item"><button class="nav-link" id="zones-tab" data-bs-toggle="tab" data-bs-target="#zones" type="button"><i class="bi bi-grid-3x3-gap"></i> 구역별 제어</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#history" type="button"><i class="bi bi-clock-history"></i> 관수 이력</button></li>
   </ul>
   <div class="tab-content">
     <!-- 탭1: 제어 패널 -->
@@ -147,19 +147,16 @@
                 <button class="btn btn-outline-success mode-btn" id="btn-auto" onclick="setMode('auto')">
                   <i class="bi bi-robot d-block fs-3 mb-1"></i>자동
                 </button>
-                <button class="btn btn-outline-info mode-btn" id="btn-schedule" onclick="setMode('schedule')">
-                  <i class="bi bi-calendar-check d-block fs-3 mb-1"></i>스케줄
-                </button>
               </div>
-              <div class="alert alert-info" style="font-size:var(--font-size-small);">
+              <div class="alert alert-success" style="font-size:var(--font-size-small);">
                 <i class="bi bi-info-circle me-1"></i>
                 <strong>수동:</strong> 구역별 제어 탭에서 직접 관수 버튼 클릭<br>
-                <strong>자동:</strong> 토양 수분이 임계값 미만이면 자동 관수 실행<br>
-                <strong>스케줄:</strong> 설정한 시간대에 자동 관수 (추후 지원)
+                <strong>자동:</strong> 수분 감지 + 스케줄 + 루틴 <strong>동시 동작</strong><br>
+                <small class="text-muted">⚙️ 스케줄/루틴 설정 →
+                  <a href="/settings" class="text-decoration-none">설정 페이지</a>
+                </small>
               </div>
               <div class="row g-2 align-items-center mb-3">
-                <div class="col-auto"><label class="form-label mb-0 fw-bold">기본 관수 시간 (초):</label></div>
-                <div class="col-auto"><input type="number" id="global-duration" class="form-control" value="30" min="5" max="600" style="width:100px;"></div>
               </div>
               <div class="d-flex gap-2 flex-wrap">
                 <button class="btn btn-outline-primary" onclick="readAllSensors()"><i class="bi bi-broadcast me-1"></i>전체 센서 읽기</button>
@@ -178,70 +175,10 @@
     <div class="tab-pane fade" id="zones" role="tabpanel">
       <div class="row g-2" id="zone-cards-container"></div>
     </div>
-    <!-- 탭3: 관수 이력 -->
-    <div class="tab-pane fade" id="history" role="tabpanel">
-      <div class="card">
-        <div class="card-header">
-          <div class="d-flex flex-wrap align-items-center gap-2">
-            <span class="me-auto"><i class="bi bi-clock-history"></i> 관수 이력</span>
-            <!-- 날짜 필터 -->
-            <div class="d-flex align-items-center gap-1">
-              <label class="mb-0" style="font-size:0.75rem;color:#888;">시작</label>
-              <input type="date" id="hist-from" class="form-control form-control-sm" style="width:140px;">
-              <label class="mb-0" style="font-size:0.75rem;color:#888;">종료</label>
-              <input type="date" id="hist-to"   class="form-control form-control-sm" style="width:140px;">
-            </div>
-            <button class="btn btn-outline-secondary btn-sm" onclick="loadHistory()">
-              <i class="bi bi-arrow-clockwise"></i> 새로고침
-            </button>
-            <button class="btn btn-success btn-sm" onclick="downloadIrrigationCSV()">
-              <i class="bi bi-download me-1"></i>CSV 다운로드
-            </button>
-          </div>
-        </div>
-        <div class="card-body p-0">
-          <div class="history-scroll">
-            <table class="table table-hover history-table mb-0">
-              <thead class="table-light">
-                <tr><th class="ps-3">시간</th><th>구역</th><th>관수(초)</th><th>트리거</th><th>결과</th></tr>
-              </thead>
-              <tbody id="history-tbody"><tr><td colspan="5" class="text-center text-muted py-4">이력 없음</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+
   </div>
 </div>
-<!-- 임계값 모달 -->
-<div class="modal fade" id="thresholdModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-sliders me-2"></i>임계값 설정 – <span id="modal-zone-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="modal-zone-id">
-        <p class="text-muted" style="font-size:var(--font-size-small);">토양 수분이 이 임계값 미만이면 자동 모드에서 관수가 실행됩니다.</p>
-        <label class="form-label fw-bold">수분 임계값 (%)</label>
-        <div class="d-flex align-items-center gap-3">
-          <input type="range" id="modal-slider" class="form-range flex-grow-1" min="10" max="80" step="5" value="40" oninput="document.getElementById('modal-val').textContent=this.value+'%'">
-          <span id="modal-val" class="fw-bold text-primary" style="min-width:45px;">40%</span>
-        </div>
-        <div class="row g-2 mt-2 text-center" style="font-size:var(--font-size-small);">
-          <div class="col-4"><div class="p-2 rounded" style="background:#ffebee;color:#c62828;">10~20% – 건조</div></div>
-          <div class="col-4"><div class="p-2 rounded" style="background:#fff3e0;color:#e65100;">30~50% – 권장</div></div>
-          <div class="col-4"><div class="p-2 rounded" style="background:#e8f5e9;color:#2e7d32;">60~80% – 충분</div></div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
-        <button class="btn btn-success" onclick="saveThreshold()"><i class="bi bi-check2 me-1"></i>저장</button>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- 임계값 설정은 설정 페이지 > 자동 관수 설정 탭에서 관리합니다 -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{{ url_for('static', filename='js/irrigation.js') }}?v=1"></script>
 <script>

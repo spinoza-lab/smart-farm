@@ -192,11 +192,11 @@ def init_monitoring_system():
             # ── IrrigationScheduler 초기화 ──────────────
             global irrigation_scheduler
             try:
-                irrigation_scheduler = IrrigationScheduler(
-                    auto_controller=auto_irrigation,
-                    schedules_path="/home/pi/smart_farm/config/schedules.json",
-                )
+                irrigation_scheduler = IrrigationScheduler(auto_irrigation)
                 print("✅ IrrigationScheduler 초기화 완료")
+                auto_irrigation._scheduler = irrigation_scheduler
+                if auto_irrigation.mode == "auto" and not irrigation_scheduler._running:
+                    irrigation_scheduler.start()
             except Exception as _se:
                 print(f"⚠️  IrrigationScheduler 초기화 실패: {_se}")
                 irrigation_scheduler = None
@@ -738,11 +738,11 @@ def set_irrigation_mode():
     global irrigation_scheduler
     if irrigation_scheduler:
         if mode == 'schedule':
-            if not irrigation_scheduler.running:
+            if not irrigation_scheduler._running:
                 irrigation_scheduler.start()
                 print("[Mode] 스케줄러 시작됨")
         else:
-            if irrigation_scheduler.running:
+            if irrigation_scheduler._running:
                 irrigation_scheduler.stop()
                 print("[Mode] 스케줄러 중지됨")
 
@@ -1242,7 +1242,7 @@ def get_next_schedule():
     """다음 실행 예정 스케줄 반환."""
     if not irrigation_scheduler:
         return jsonify({'success': False, 'message': '스케줄러 초기화 안 됨'})
-    next_s = irrigation_scheduler.get_next_schedule()
+    next_s = (irrigation_scheduler.get_next_schedules(limit=1) or [None])[0]
     if next_s:
         return jsonify({'success': True, 'next_schedule': next_s})
     return jsonify({'success': True, 'next_schedule': None, 'message': '예정된 스케줄 없음'})
@@ -1256,9 +1256,9 @@ def get_scheduler_status():
     next_s = irrigation_scheduler.get_next_schedule()
     return jsonify({
         'success': True,
-        'running': irrigation_scheduler.running,
+        'running': irrigation_scheduler._running,
         'next_schedule': next_s,
-        'check_interval': irrigation_scheduler.check_interval,
+        'check_interval': 30,
     })
 
 
@@ -1383,3 +1383,56 @@ if __name__ == '__main__':
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
     else:
         print("❌ 시스템 초기화 실패")
+
+
+
+# ============================================================
+#  스케줄 / 루틴 CRUD API  (patch_v3 추가)
+# ============================================================
+@app.route('/api/schedules', methods=['GET'])
+def get_schedules():
+    return jsonify({'schedules': scheduler.get_all_schedules()})
+
+@app.route('/api/schedules', methods=['POST'])
+def create_schedule():
+    data = request.get_json(force=True) or {}
+    stype = data.get('type', 'schedule')
+    if stype not in ('schedule', 'routine'):
+        return jsonify({'success': False, 'message': 'type 은 schedule 또는 routine'}), 400
+    for f in ['zone_id', 'duration']:
+        if f not in data:
+            return jsonify({'success': False, 'message': f'필수 항목 누락: {f}'}), 400
+    if stype == 'schedule' and ('start_time' not in data or 'days' not in data):
+        return jsonify({'success': False, 'message': 'schedule: start_time, days 필요'}), 400
+    if stype == 'routine' and not all(k in data for k in ('start_date','start_time','interval_days')):
+        return jsonify({'success': False, 'message': 'routine: start_date, start_time, interval_days 필요'}), 400
+    entry = scheduler.add_schedule(data)
+    return jsonify({'success': True, 'schedule': entry}), 201
+
+@app.route('/api/schedules/<int:schedule_id>', methods=['GET'])
+def get_schedule(schedule_id):
+    for s in scheduler.get_all_schedules():
+        if s.get('id') == schedule_id: return jsonify(s)
+    return jsonify({'error': 'not found'}), 404
+
+@app.route('/api/schedules/<int:schedule_id>', methods=['PUT'])
+def update_schedule(schedule_id):
+    data = request.get_json(force=True) or {}
+    ok = scheduler.update_schedule(schedule_id, data)
+    return jsonify({'success': ok, 'message': '수정 완료' if ok else '찾을 수 없음'}), (200 if ok else 404)
+
+@app.route('/api/schedules/<int:schedule_id>', methods=['DELETE'])
+def delete_schedule(schedule_id):
+    ok = scheduler.delete_schedule(schedule_id)
+    return jsonify({'success': ok, 'message': '삭제 완료' if ok else '찾을 수 없음'}), (200 if ok else 404)
+
+@app.route('/api/schedules/<int:schedule_id>/toggle', methods=['POST'])
+def toggle_schedule(schedule_id):
+    result = scheduler.toggle_schedule(schedule_id)
+    return jsonify({'success': bool(result), **result}) if result else (jsonify({'success': False, 'message': '찾을 수 없음'}), 404)
+
+@app.route('/api/schedules/next', methods=['GET'])
+def get_next_schedules():
+    limit = int(request.args.get('limit', 5))
+    return jsonify({'next_schedules': scheduler.get_next_schedules(limit=limit)})
+# ============================================================ /patch_v3

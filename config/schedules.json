@@ -1,3 +1,57 @@
 {
-  "schedules": []
+  "schedules": [
+    {
+      "id": 1,
+      "zone_id": 1,
+      "start_time": "06:00",
+      "duration": 300,
+      "days": [
+        0,
+        2,
+        4
+      ],
+      "enabled": true,
+      "created_at": "2026-02-24 10:50:15",
+      "type": "schedule"
+    },
+    {
+      "id": 2,
+      "zone_id": 1,
+      "start_time": "11:26",
+      "duration": 10,
+      "days": [],
+      "enabled": true,
+      "created_at": "2026-02-24 11:24:42",
+      "type": "schedule"
+    },
+    {
+      "id": 3,
+      "zone_id": 1,
+      "start_time": "11:34",
+      "duration": 5,
+      "days": [],
+      "enabled": true,
+      "created_at": "2026-02-24 11:32:14",
+      "type": "schedule"
+    },
+    {
+      "id": 4,
+      "zone_id": 1,
+      "start_time": "11:43",
+      "duration": 5,
+      "days": [],
+      "enabled": true,
+      "created_at": "2026-02-24 11:42:08",
+      "type": "schedule"
+    },
+    {
+      "id": 5,
+      "zone_id": 1,
+      "start_time": "10:20",
+      "duration": 600,
+      "days": [],
+      "enabled": true,
+      "created_at": "2026-02-24 14:56:54"
+    }
+  ]
 }
