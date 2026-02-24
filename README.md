@@ -2,7 +2,7 @@
 
 > **Repository**: [spinoza-lab/smart-farm](https://github.com/spinoza-lab/smart-farm)  
 > **최종 업데이트**: 2026-02-23  
-> **버전**: v2.5
+> **버전**: v2.7
 
 라즈베리파이 기반 자동 관수 및 수위 모니터링 시스템
 
@@ -18,6 +18,7 @@
 - 🎛️ **관수 제어 웹 UI** - 구역별 게이지, 수동 관수, 임계값 설정
 - 📥 **CSV 데이터 다운로드** - 탱크 수위·관수 이력 기간별 내보내기
 - 🔧 **systemd 자동 시작** - 부팅 시 자동 실행 및 로그 관리
+- 📊 **데이터 분석 페이지** - 탱크 수위 트렌드, 관수 효율, 구역별 통계, 줌/팬 차트
 
 ## 🛠 하드웨어 구성
 
@@ -44,11 +45,11 @@ smart_farm/
 │   ├── gpio_expander.py       # MCP23017 GPIO 확장
 │   ├── relay_controller.py    # 릴레이 제어 (12구역 + 펌프)
 │   ├── sensor_reader.py       # ADS1115 센서 읽기
-│   ├── modbus_soil_sensor.py  # RS-485 토양 수분 센서 (Modbus RTU) ← NEW
+│   ├── modbus_soil_sensor.py  # RS-485 토양 수분 센서 (Modbus RTU)
 │   └── rtc_manager.py         # RTC 시간 관리
 │
 ├── irrigation/            # 관수 제어
-│   ├── auto_controller.py     # 자동 관수 컨트롤러 (수동/자동/스케줄) ← NEW
+│   ├── auto_controller.py     # 자동 관수 컨트롤러 (수동/자동/스케줄)
 │   ├── config_manager.py      # 설정 관리
 │   ├── zone_manager.py        # 구역별 관수
 │   ├── scheduler.py           # 스케줄 관리
@@ -65,23 +66,23 @@ smart_farm/
 │   ├── templates/         # HTML 템플릿
 │   │   ├── index.html     # 대시보드
 │   │   ├── settings.html  # 설정 페이지
-│   │   └── irrigation.html  # 관수 제어 페이지 ← NEW
+│   │   └── irrigation.html  # 관수 제어 페이지
 │   └── static/            # CSS, JS, 파비콘
 │       ├── css/style.css
 │       ├── js/
 │       │   ├── dashboard.js
 │       │   ├── settings.js
-│       │   └── irrigation.js  # 관수 제어 클라이언트 ← NEW
+│       │   └── irrigation.js  # 관수 제어 클라이언트
 │       └── favicon.svg
 │
 ├── logs/                  # 로그 파일
 │   ├── sensors_YYYY-MM-DD.csv  # 탱크 수위 센서 데이터 (10초 주기)
-│   ├── irrigation_history.csv  # 관수 이력 영구 저장 ← NEW
+│   ├── irrigation_history.csv  # 관수 이력 영구 저장
 │   └── alerts.log              # 알림 로그
 │
 └── config/                # 설정 파일
     ├── sensor_calibration.json  # 탱크 센서 캘리브레이션
-    └── soil_sensors.json        # 토양 센서 / 관수 설정 ← NEW
+    └── soil_sensors.json        # 토양 센서 / 관수 설정
 ```
 
 ## 🚀 설치 및 실행
@@ -298,7 +299,7 @@ timestamp,zone_id,duration_sec,trigger,moisture_before,success
 - ✅ **정밀도 유지**: 계산 시 전체 정밀도 사용
 - ✅ **3중 검증**: HTML pattern + JavaScript + 서버 round()
 
-## 🎨 웹 대시보드 (v2.5)
+## 🎨 웹 대시보드 (v2.7)
 
 ### 대시보드 페이지 (`/`)
 
@@ -320,11 +321,11 @@ timestamp,zone_id,duration_sec,trigger,moisture_before,success
 ### 설정 페이지 (`/settings`)
 
 - **센서 캘리브레이션**: 정밀 전압 입력 (0.001V 단위)
-- **자동 제어**: (Stage 7 이후 확장 예정)
+- **자동 제어**: 관수 임계값 설정 (Stage 8 확장 예정)
 - **호스건 설정**: 수동 On/Off
 - **알림 설정**: (Stage 8 예정)
 
-### 관수 제어 페이지 (`/irrigation`) ← NEW
+### 관수 제어 페이지 (`/irrigation`)
 
 #### 제어 패널 탭
 - 시스템 상태 배너 (수동/자동/스케줄 모드 표시)
@@ -344,7 +345,31 @@ timestamp,zone_id,duration_sec,trigger,moisture_before,success
 #### 관수 이력 탭
 - 최근 관수 이력 테이블 (시간, 구역, 관수(초), 트리거, 결과)
 - **날짜 필터** (시작일~종료일 선택)
-- **CSV 다운로드 버튼** ← NEW
+- **CSV 다운로드 버튼**
+
+### 데이터 분석 페이지 (`/analytics`) ← NEW
+
+#### 탱크 수위 트렌드 탭
+- **수위 변화 라인 차트** (Chart.js 줌/팬 플러그인)
+- **날짜 필터** + 빠른 기간 선택 (오늘 / 7일 / 30일 / 90일)
+- 탱크1·탱크2 평균/최소/최대 통계 카드
+- 800포인트 다운샘플링 (대용량 데이터 최적화)
+
+#### 관수 분석 탭
+- **일별 관수 횟수** 막대 차트
+- **트리거 유형 비율** 도넛 차트 (자동/수동/스케줄)
+- **구역별 평균 관수 시간** 라인 차트
+- 성공률·총 관수 횟수 통계
+
+#### 구역별 통계 탭
+- **12구역 관수 횟수** 가로 막대 차트
+- **12구역 평균 관수 시간** 가로 막대 차트
+- 구역별 성공률 배지 포함 상세 테이블
+
+#### 원시 로그 탭
+- 구역·트리거 유형 필터
+- 전체 관수 이력 테이블
+- **CSV 다운로드** 버튼 (날짜 필터 적용)
 
 #### 공통 UI/UX
 - ✅ Gradient 네비게이션 바 (보라색 그라데이션)
@@ -387,7 +412,7 @@ timestamp,zone_id,duration_sec,trigger,moisture_before,success
 | POST | `/api/hose-gun/activate` | 호스건 ON |
 | POST | `/api/hose-gun/deactivate` | 호스건 OFF |
 
-### 관수 제어 ← NEW
+### 관수 제어
 
 | Method | Endpoint | 설명 |
 |--------|----------|------|
@@ -400,7 +425,14 @@ timestamp,zone_id,duration_sec,trigger,moisture_before,success
 | POST | `/api/irrigation/threshold` | 구역 임계값 설정 `{zone_id, threshold}` |
 | GET | `/api/irrigation/history?limit=20` | 관수 이력 JSON |
 
-### CSV 다운로드 ← NEW
+### 분석 API ← NEW
+
+| Method | Endpoint | 설명 |
+|--------|----------|-----------|
+| GET | `/api/analytics/sensor-data` | 탱크 수위 이력 (`?from=&to=`, 다운샘플링 800pt) |
+| GET | `/api/analytics/irrigation-history` | 관수 이력 분석 (`?from=&to=`, 구역별 통계 포함) |
+
+### CSV 다운로드
 
 | Method | Endpoint | 설명 |
 |--------|----------|------|
@@ -461,6 +493,14 @@ timestamp,zone_id,duration_sec,trigger,moisture_before,success
   - ✅ 관수 이력 CSV 다운로드 API (날짜 필터 지원)
   - ✅ 탱크 수위 CSV 다운로드 API (기간별 병합)
   - ✅ irrigation.html 관수 이력 탭에 날짜 필터 + CSV 다운로드 버튼 추가
+- **2026-02-24 (Stage 7)**:
+  - ✅ `analytics.html` / `analytics.js` 데이터 분석 페이지 구현
+  - ✅ 탱크 수위 트렌드 탭 (Chart.js 줌/팬, 800pt 다운샘플링)
+  - ✅ 관수 분석 탭 (일별 횟수 막대, 트리거 도넛, 시간 라인 차트)
+  - ✅ 구역별 통계 탭 (12구역 카운트/평균 가로 막대, 성공률 배지)
+  - ✅ 원시 로그 탭 (필터 + 전체 이력 테이블 + CSV 다운로드)
+  - ✅ `/api/analytics/sensor-data`, `/api/analytics/irrigation-history` API 추가
+  - ✅ 모든 페이지 네비게이션 바에 분석(📊) 링크 추가
 
 ## 🔧 주요 해결 과제
 
@@ -516,14 +556,15 @@ timestamp,zone_id,duration_sec,trigger,moisture_before,success
 - [x] Stage 4 — RS-485 토양 센서 + 자동 관수 제어 (`e56e521`)
 - [x] Stage 5 — 관수 제어 웹 UI + CSV 다운로드 (`e294a82`)
 - [x] Stage 6 — systemd 자동 시작 + 로그 관리 (`c3d1027`)
+- [x] Stage 7 — 데이터 분석 페이지 (`analytics.html`, Chart.js 줌/팬)
 
 ### ⏳ 예정된 Stage
 
-#### Stage 7: 로그 분석 페이지
-- [ ] 날짜별 과거 데이터 조회 (`analytics.html`)
-- [ ] 기간별 통계 (일/주/월)
-- [ ] 관수 효율 분석 (수분 변화 추이 그래프)
-- [ ] 그래프 줌/팬 기능
+#### ~~Stage 7: 로그 분석 페이지~~ ✅ 완료
+- [x] 날짜별 과거 데이터 조회 (`analytics.html`)
+- [x] 기간별 통계 (일/주/월)
+- [x] 관수 효율 분석 (수분 변화 추이 그래프)
+- [x] 그래프 줌/팬 기능
 
 #### Stage 8: 알림 고도화
 - [ ] Telegram 봇 알림 (수위 경고, 관수 완료)
