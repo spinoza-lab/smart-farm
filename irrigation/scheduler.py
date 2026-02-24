@@ -1,466 +1,205 @@
-#!/usr/bin/env python3
 """
-scheduler.py
-자동 관수 스케줄러
-- 시간 기반 자동 관수
-- 요일별 스케줄
-- 백그라운드 실행
+scheduler_new.py - 스케줄 기반 자동 관수 스케줄러 (완전 재작성)
+- AutoIrrigationController 주입 방식으로 의존성 단순화
+- schedules.json 직접 읽기 (ConfigManager 불필요)
+- datetime.now() 사용 (RTCManager 제거)
+- 요일 체계 통일: 0=월요일 ~ 6=일요일 (Python weekday() 기준)
 """
 
-import time
+import json
 import threading
-from datetime import datetime, timedelta
-from typing import List, Dict, Optional
 import logging
+from datetime import datetime, timedelta
+from pathlib import Path
 
-from zone_manager import ZoneManager
-from config_manager import ConfigManager
-from hardware.rtc_manager import RTCManager
+logger = logging.getLogger(__name__)
 
 
 class IrrigationScheduler:
-    """자동 관수 스케줄러"""
-    
-    def __init__(self):
-        """초기화"""
-        print("\n" + "="*60)
-        print("⏰ IrrigationScheduler 초기화")
-        print("="*60)
-        
-        self.config_manager = ConfigManager()
-        self.zone_manager = ZoneManager()
-        self.rtc = RTCManager()
-        
+    """
+    schedules.json을 주기적으로 읽어 설정된 시간/요일에 관수를 실행하는 스케줄러.
+    AutoIrrigationController.irrigate_zone()을 호출하여 실제 관수를 수행한다.
+    """
+
+    def __init__(self, auto_controller, schedules_path: str):
+        """
+        :param auto_controller: AutoIrrigationController 인스턴스
+        :param schedules_path: schedules.json 파일 경로 (절대경로 권장)
+        """
+        self.auto_controller = auto_controller
+        self.schedules_path = Path(schedules_path)
+        self.check_interval = 30          # 초 단위 점검 주기
         self.running = False
-        self.scheduler_thread = None
-        
-        # 스케줄 체크 간격 (초)
-        self.check_interval = 30  # 30초마다 체크
-        
-        # 실행된 스케줄 추적 (중복 실행 방지)
-        self.executed_schedules = {}
-        
-        print("✅ IrrigationScheduler 초기화 완료\n")
-    
-    def start(self, blocking=False):
-        """
-        스케줄러 시작
-        
-        Args:
-            blocking: True면 메인 스레드에서 실행 (Ctrl+C로 종료)
-                     False면 백그라운드 스레드로 실행
-        """
+        self._thread = None
+        # {schedule_id: 'YYYY-MM-DD'} 형식으로 오늘 이미 실행된 스케줄 기록
+        self._executed_today: dict[int, str] = {}
+        logger.info("[Scheduler] 초기화 완료 (schedules: %s)", self.schedules_path)
+
+    # ──────────────────────────────────────────
+    # 공개 메서드
+    # ──────────────────────────────────────────
+
+    def start(self):
+        """백그라운드 데몬 스레드로 스케줄러를 시작한다."""
         if self.running:
-            print("⚠️  스케줄러가 이미 실행 중입니다.")
+            logger.warning("[Scheduler] 이미 실행 중입니다.")
             return
-        
         self.running = True
-        
-        if blocking:
-            print("\n" + "="*60)
-            print("🚀 스케줄러 시작 (Ctrl+C로 종료)")
-            print("="*60)
-            try:
-                self._run_scheduler()
-            except KeyboardInterrupt:
-                print("\n\n⏹️  사용자가 스케줄러를 중지했습니다.")
-                self.stop()
-        else:
-            self.scheduler_thread = threading.Thread(
-                target=self._run_scheduler,
-                daemon=True
-            )
-            self.scheduler_thread.start()
-            print("✅ 스케줄러가 백그라운드에서 시작되었습니다.")
-    
+        self._thread = threading.Thread(
+            target=self._run_loop, name="IrrigationScheduler", daemon=True
+        )
+        self._thread.start()
+        logger.info("[Scheduler] 스케줄러 시작 (interval=%ds)", self.check_interval)
+
     def stop(self):
-        """스케줄러 중지"""
-        print("\n⏹️  스케줄러 중지 중...")
+        """스케줄러를 중지한다."""
         self.running = False
-        
-        if self.scheduler_thread and self.scheduler_thread.is_alive():
-            self.scheduler_thread.join(timeout=5)
-        
-        print("✅ 스케줄러가 중지되었습니다.\n")
-    
-    def _run_scheduler(self):
-        """스케줄러 메인 루프"""
-        print(f"⏰ 스케줄 체크 간격: {self.check_interval}초\n")
-        
+        logger.info("[Scheduler] 스케줄러 중지 요청")
+
+    def get_next_schedule(self) -> dict | None:
+        """
+        지금 이후 가장 빨리 실행될 스케줄 정보를 반환한다.
+        반환 형식: {schedule_id, zone_id, zone_name, start_time, duration, days, minutes_until}
+        실행 예정 스케줄이 없으면 None 반환.
+        """
+        schedules = self._load_schedules()
+        now = datetime.now()
+        today_str = now.strftime("%H:%M")
+        today_wd = now.weekday()          # 0=월 ~ 6=일
+
+        candidates = []
+        for s in schedules:
+            if not s.get("enabled", True):
+                continue
+            days = s.get("days")          # None 또는 [0,1,...] 리스트
+
+            # 오늘 실행 가능 여부 확인
+            if days is None or today_wd in days:
+                t = s["start_time"]       # "HH:MM"
+                if t > today_str:         # 아직 실행 전
+                    h, m = map(int, t.split(":"))
+                    run_dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
+                    minutes_until = int((run_dt - now).total_seconds() / 60)
+                    candidates.append({**s, "minutes_until": minutes_until, "run_dt": run_dt})
+
+            # 내일 이후 체크 (오늘 스케줄 없을 때)
+            if not candidates:
+                for delta in range(1, 8):
+                    future_dt = now + timedelta(days=delta)
+                    future_wd = future_dt.weekday()
+                    if days is None or future_wd in days:
+                        h, m = map(int, s["start_time"].split(":"))
+                        run_dt = future_dt.replace(
+                            hour=h, minute=m, second=0, microsecond=0
+                        )
+                        minutes_until = int((run_dt - now).total_seconds() / 60)
+                        candidates.append(
+                            {**s, "minutes_until": minutes_until, "run_dt": run_dt}
+                        )
+                        break
+
+        if not candidates:
+            return None
+
+        next_s = min(candidates, key=lambda x: x["run_dt"])
+        next_s.pop("run_dt", None)
+        return next_s
+
+    # ──────────────────────────────────────────
+    # 내부 메서드
+    # ──────────────────────────────────────────
+
+    def _run_loop(self):
+        """메인 루프: check_interval 초마다 스케줄 점검."""
+        logger.info("[Scheduler] 루프 진입")
         while self.running:
             try:
-                self._check_and_execute_schedules()
-                
-                # 다음 체크까지 대기
-                for _ in range(self.check_interval):
-                    if not self.running:
-                        break
-                    time.sleep(1)
-                    
-            except Exception as e:
-                print(f"❌ 스케줄러 오류: {e}")
-                logging.error(f"Scheduler error: {e}")
-                time.sleep(60)  # 오류 발생 시 1분 대기
-    
-    def _check_and_execute_schedules(self):
-        """스케줄 체크 및 실행"""
-        now_struct = self.rtc.get_datetime()
-        now = datetime(
-            now_struct.tm_year,
-            now_struct.tm_mon,
-            now_struct.tm_mday,
-            now_struct.tm_hour,
-            now_struct.tm_min,
-            now_struct.tm_sec
-        )
-        current_time = now.strftime("%H:%M")
-        current_day = now.weekday() + 1
-        current_date = now.strftime("%Y-%m-%d")
-        
-        # 모든 활성 스케줄 가져오기
-        schedules = self.config_manager.get_active_schedules()
-        
-        for schedule in schedules:
-            if not schedule.get('enabled', True):
-                continue
-            
-            schedule_id = schedule['id']
-            zone_id = schedule['zone_id']
-            start_time = schedule['start_time']
-            duration = schedule['duration']
-            days = schedule.get('days', [])  # 빈 리스트 = 매일
-            
-            # 스케줄 실행 조건 체크
-            should_run = False
-            
-            # 1) 시간 체크
-            if start_time == current_time:
-                # 2) 요일 체크
-                if not days or current_day in days:
-                    # 3) 오늘 이미 실행했는지 체크
-                    last_run = self.executed_schedules.get(schedule_id)
-                    if last_run != current_date:
-                        should_run = True
-            
-            # 스케줄 실행
-            if should_run:
-                self._execute_schedule(schedule, current_date)
-    
-    def _execute_schedule(self, schedule: Dict, current_date: str):
-        """스케줄 실행"""
-        schedule_id = schedule['id']
-        zone_id = schedule['zone_id']
-        duration = schedule['duration']
-        
-        zone_info = self.zone_manager.get_zone_info(zone_id)
-        zone_name = zone_info.get('name', f'구역 {zone_id}')
-        
-        print("\n" + "="*60)
-        print(f"📅 스케줄 실행")
-        print("="*60)
-        print(f"스케줄 ID: {schedule_id}")
-        print(f"구역: {zone_name} (ID: {zone_id})")
-        print(f"시간: {schedule['start_time']}")
-        print(f"지속시간: {duration}초 ({duration//60}분 {duration%60}초)")
-        print("="*60)
-        
+                self._check_and_execute()
+            except Exception as exc:
+                logger.error("[Scheduler] 점검 중 오류: %s", exc, exc_info=True)
+            # check_interval 을 1초 단위로 나눠 sleep 해야 stop() 이 빠르게 반응
+            for _ in range(self.check_interval):
+                if not self.running:
+                    break
+                import time
+                time.sleep(1)
+        logger.info("[Scheduler] 루프 종료")
+
+    def _load_schedules(self) -> list:
+        """schedules.json을 읽어 리스트로 반환. 파일 없으면 빈 리스트."""
         try:
-            # 관수 실행
-            success = self.zone_manager.irrigate(
-                zone_id=zone_id,
-                duration=duration
-            )
-            
-            if success:
-                # 실행 기록
-                self.executed_schedules[schedule_id] = current_date
-                print(f"✅ 스케줄 실행 완료: {zone_name}")
-            else:
-                print(f"⚠️  스케줄 실행 실패: {zone_name}")
-                
-        except Exception as e:
-            print(f"❌ 스케줄 실행 오류: {e}")
-            logging.error(f"Schedule execution error: {e}")
-        
-        print("="*60 + "\n")
-    
-    def add_schedule(self, zone_id: int, start_time: str, duration: int, 
-                    days: Optional[List[int]] = None) -> int:
-        """
-        스케줄 추가
-        
-        Args:
-            zone_id: 구역 ID
-            start_time: 시작 시간 (HH:MM)
-            duration: 지속시간 (초)
-            days: 요일 리스트 (1=월, 7=일), None=매일
-        
-        Returns:
-            생성된 스케줄 ID
-        """
-        schedule_id = self.config_manager.add_schedule(
-            zone_id=zone_id,
-            start_time=start_time,
-            duration=duration,
-            days=days or []
-        )
-        
-        zone_info = self.zone_manager.get_zone_info(zone_id)
-        zone_name = zone_info.get('name', f'구역 {zone_id}')
-        
-        days_str = "매일" if not days else f"요일: {days}"
-        
-        print(f"\n✅ 스케줄 추가 완료")
-        print(f"   스케줄 ID: {schedule_id}")
-        print(f"   구역: {zone_name} (ID: {zone_id})")
-        print(f"   시간: {start_time}")
-        print(f"   지속시간: {duration}초")
-        print(f"   {days_str}\n")
-        
-        return schedule_id
-    
-    def remove_schedule(self, schedule_id: int) -> bool:
-        """스케줄 삭제"""
-        success = self.config_manager.remove_schedule(schedule_id)
-        
-        if success:
-            print(f"✅ 스케줄 {schedule_id} 삭제 완료")
-            
-            # 실행 기록도 삭제
-            if schedule_id in self.executed_schedules:
-                del self.executed_schedules[schedule_id]
-        else:
-            print(f"⚠️  스케줄 {schedule_id}를 찾을 수 없습니다.")
-        
-        return success
+            if not self.schedules_path.exists():
+                return []
+            with open(self.schedules_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, list) else []
+        except Exception as exc:
+            logger.error("[Scheduler] schedules.json 로드 실패: %s", exc)
+            return []
 
-    def enable_schedule(self, schedule_id: int, enabled: bool = True) -> bool:
-        """스케줄 활성화/비활성화"""
-        # ConfigManager에 update_schedule이 없으므로
-        # 직접 스케줄을 가져와서 수정 후 저장
-        schedule = self.config_manager.get_schedule(schedule_id)
-        if not schedule:
-            print(f"⚠️  스케줄 {schedule_id}를 찾을 수 없습니다.")
-            return False
-        
-        schedule['enabled'] = enabled
-        
-        # 모든 스케줄 가져오기
-        all_schedules = self.config_manager.get_active_schedules()
-        
-        # 해당 스케줄 업데이트
-        for i, s in enumerate(all_schedules):
-            if s['id'] == schedule_id:
-                all_schedules[i] = schedule
-                break
-        
-        # 저장
-        self.config_manager.save_schedules({'schedules': all_schedules})
-        success = True
-
-        if success:
-            status = "활성화" if enabled else "비활성화"
-            print(f"✅ 스케줄 {schedule_id} {status} 완료")
-        else:
-            print(f"⚠️  스케줄 {schedule_id}를 찾을 수 없습니다.")
-        
-        return success
-    
-    def get_active_schedules(self) -> List[Dict]:
-        """모든 스케줄 조회"""
-        return self.config_manager.get_active_schedules()
-    
-    def get_next_schedule(self) -> Optional[Dict]:
-        """다음 실행될 스케줄 조회"""
-        now_struct = self.rtc.get_datetime()
-        now = datetime(
-            now_struct.tm_year,
-            now_struct.tm_mon,
-            now_struct.tm_mday,
-            now_struct.tm_hour,
-            now_struct.tm_min,
-            now_struct.tm_sec
-        )
-        current_time = now.time()
-        current_day = now.weekday() + 1
-        
-        schedules = self.get_active_schedules()
-        
-        # 활성화된 스케줄만 필터링
-        active_schedules = [s for s in schedules if s.get('enabled', True)]
-        
-        if not active_schedules:
-            return None
-        
-        # 오늘 실행될 스케줄 찾기
-        today_schedules = []
-        for schedule in active_schedules:
-            days = schedule.get('days', [])
-            if not days or current_day in days:
-                schedule_time = datetime.strptime(
-                    schedule['start_time'], 
-                    "%H:%M"
-                ).time()
-                
-                if schedule_time > current_time:
-                    today_schedules.append(schedule)
-        
-        # 오늘 남은 스케줄이 있으면 가장 빠른 것 반환
-        if today_schedules:
-            return min(
-                today_schedules, 
-                key=lambda s: s['start_time']
-            )
-        
-        # 오늘 남은 스케줄이 없으면 내일 이후 첫 스케줄 반환
-        return min(active_schedules, key=lambda s: s['start_time'])
-    
-    def print_schedule_summary(self):
-        """스케줄 요약 출력"""
-        schedules = self.get_active_schedules()
-        
-        print("\n" + "="*60)
-        print("📋 스케줄 목록")
-        print("="*60)
-        
+    def _check_and_execute(self):
+        """현재 시각과 스케줄을 비교하여 실행 조건이 맞으면 관수를 시작한다."""
+        schedules = self._load_schedules()
         if not schedules:
-            print("등록된 스케줄이 없습니다.")
-        else:
-            for schedule in schedules:
-                schedule_id = schedule['id']
-                zone_id = schedule['zone_id']
-                zone_info = self.zone_manager.get_zone_info(zone_id)
-                zone_name = zone_info.get('name', f'구역 {zone_id}')
-                
-                start_time = schedule['start_time']
-                duration = schedule['duration']
-                days = schedule.get('days', [])
-                enabled = schedule.get('enabled', True)
-                
-                status = "✅" if enabled else "⏸️"
-                days_str = "매일" if not days else f"요일 {days}"
-                
-                print(f"\n{status} 스케줄 ID: {schedule_id}")
-                print(f"   구역: {zone_name} (ID: {zone_id})")
-                print(f"   시간: {start_time}")
-                print(f"   지속시간: {duration}초 ({duration//60}분 {duration%60}초)")
-                print(f"   실행: {days_str}")
-        
-        print("="*60)
-        
-        # 다음 실행 스케줄
-        next_schedule = self.get_next_schedule()
-        if next_schedule:
-            zone_id = next_schedule['zone_id']
-            zone_info = self.zone_manager.get_zone_info(zone_id)
-            zone_name = zone_info.get('name', f'구역 {zone_id}')
-            
-            print(f"\n⏰ 다음 실행: {next_schedule['start_time']} - {zone_name}")
-        
-        print()
+            return
 
+        now = datetime.now()
+        current_time = now.strftime("%H:%M")  # "HH:MM"
+        current_wd   = now.weekday()           # 0=월 ~ 6=일
+        today_str    = now.strftime("%Y-%m-%d")
 
-def test_scheduler():
-    """테스트 함수"""
-    print("\n" + "="*60)
-    print("🧪 IrrigationScheduler 테스트")
-    print("="*60)
-    
-    scheduler = IrrigationScheduler()
-    
-    # [테스트 1] 스케줄 추가
-    print("\n[테스트 1] 스케줄 추가")
-    print("-" * 60)
-    
-    # 아침 관수 (매일 06:00, 10분)
-    schedule1 = scheduler.add_schedule(
-        zone_id=1,
-        start_time="06:00",
-        duration=600,
-        days=None  # 매일
-    )
-    
-    # 저녁 관수 (월/수/금 18:00, 15분)
-    schedule2 = scheduler.add_schedule(
-        zone_id=1,
-        start_time="18:00",
-        duration=900,
-        days=[1, 3, 5]  # 월, 수, 금
-    )
-    
-    # 토마토 구역 (화/목/토 07:00, 12분)
-    schedule3 = scheduler.add_schedule(
-        zone_id=2,
-        start_time="07:00",
-        duration=720,
-        days=[2, 4, 6]  # 화, 목, 토
-    )
-    
-    # [테스트 2] 스케줄 목록
-    print("\n[테스트 2] 스케줄 목록")
-    print("-" * 60)
-    scheduler.print_schedule_summary()
-    
-    # [테스트 3] 스케줄 비활성화
-    print("\n[테스트 3] 스케줄 비활성화")
-    print("-" * 60)
-    scheduler.enable_schedule(schedule2, enabled=False)
-    scheduler.print_schedule_summary()
-    
-    # [테스트 4] 스케줄 활성화
-    print("\n[테스트 4] 스케줄 활성화")
-    print("-" * 60)
-    scheduler.enable_schedule(schedule2, enabled=True)
-    scheduler.print_schedule_summary()
-    
-    # [테스트 5] 스케줄 삭제
-    print("\n[테스트 5] 스케줄 삭제")
-    print("-" * 60)
-    scheduler.remove_schedule(schedule3)
-    scheduler.print_schedule_summary()
-    
-    # [테스트 6] 스케줄러 시작 (10초 테스트)
-    print("\n[테스트 6] 스케줄러 테스트 실행")
-    print("-" * 60)
-    print("⚠️  주의: 실제 스케줄 시간에만 관수가 실행됩니다.")
-    print("         테스트를 위해 현재 시간+1분 스케줄을 추가하세요.")
-    print()
-    
-    current_time_struct = scheduler.rtc.get_datetime()
-    current_time = datetime(
-        current_time_struct.tm_year,
-        current_time_struct.tm_mon,
-        current_time_struct.tm_mday,
-        current_time_struct.tm_hour,
-        current_time_struct.tm_min,
-        current_time_struct.tm_sec
-    )
-    test_time = (current_time + timedelta(minutes=1)).strftime("%H:%M")
-    
-    print(f"현재 시간: {current_time.strftime('%H:%M:%S')}")
-    print(f"테스트 스케줄 시간: {test_time}")
-    
-    # 테스트 스케줄 추가
-    test_schedule = scheduler.add_schedule(
-        zone_id=1,
-        start_time=test_time,
-        duration=5,  # 5초
-        days=None
-    )
-    
-    print(f"\n⏰ 1분 후 ({test_time})에 5초 관수가 실행됩니다.")
-    print("   Ctrl+C로 중지할 수 있습니다.\n")
-    
-    try:
-        # 블로킹 모드로 실행 (Ctrl+C로 종료)
-        scheduler.start(blocking=True)
-    except KeyboardInterrupt:
-        print("\n테스트 중단")
-    
-    print("\n" + "="*60)
-    print("✅ 모든 테스트 완료!")
-    print("="*60 + "\n")
+        for s in schedules:
+            sid = s.get("id")
+            if sid is None:
+                continue
+            if not s.get("enabled", True):
+                continue
+            if s.get("start_time") != current_time:
+                continue
+            # 오늘 이미 실행했으면 스킵
+            if self._executed_today.get(sid) == today_str:
+                continue
+            # 요일 체크: days 필드가 없거나 빈 리스트면 매일 실행
+            days = s.get("days")
+            if days and current_wd not in days:
+                continue
 
+            # ✅ 실행 조건 충족
+            logger.info(
+                "[Scheduler] 스케줄 #%d 실행 시작 - 구역 %d, 시각 %s",
+                sid, s.get("zone_id", "?"), current_time,
+            )
+            self._executed_today[sid] = today_str
+            # 별도 스레드로 실행(블로킹 방지)
+            t = threading.Thread(
+                target=self._execute_schedule,
+                args=(s,),
+                daemon=True,
+                name=f"sched-{sid}",
+            )
+            t.start()
 
-if __name__ == "__main__":
-    test_scheduler()
+    def _execute_schedule(self, schedule: dict):
+        """실제 관수 실행 (별도 스레드)."""
+        sid       = schedule.get("id")
+        zone_id   = schedule.get("zone_id")
+        duration  = schedule.get("duration", 300)
+        zone_name = schedule.get("zone_name", f"구역 {zone_id}")
+
+        logger.info(
+            "[Scheduler] 스케줄 #%d 실행: %s, %d초 관수", sid, zone_name, duration
+        )
+        try:
+            success = self.auto_controller.irrigate_zone(
+                zone_id=zone_id,
+                duration=duration,
+                trigger="schedule",
+            )
+            if success:
+                logger.info("[Scheduler] 스케줄 #%d 관수 완료 (%s)", sid, zone_name)
+            else:
+                logger.warning("[Scheduler] 스케줄 #%d 관수 실패 (%s)", sid, zone_name)
+        except Exception as exc:
+            logger.error(
+                "[Scheduler] 스케줄 #%d 관수 중 예외: %s", sid, exc, exc_info=True
+            )

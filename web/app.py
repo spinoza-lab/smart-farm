@@ -23,6 +23,7 @@ from monitoring.sensor_monitor import SensorMonitor
 from hardware.relay_controller import RelayController
 from hardware.modbus_soil_sensor import SoilSensorManager
 from irrigation.auto_controller import AutoIrrigationController
+from irrigation.scheduler import IrrigationScheduler
 from monitoring.data_logger import DataLogger
 from monitoring.alert_manager import AlertManager, AlertLevel
 
@@ -40,6 +41,7 @@ alert_manager = None
 relay_controller = None
 soil_sensor_manager = None
 auto_irrigation = None
+irrigation_scheduler = None   # IrrigationScheduler 인스턴스
 monitoring_active = False
 monitoring_thread = None
 
@@ -186,6 +188,18 @@ def init_monitoring_system():
                 relay_controller=relay_controller
             )
             print("✅ 토양 센서 & 자동 관수 초기화 완료")
+
+            # ── IrrigationScheduler 초기화 ──────────────
+            global irrigation_scheduler
+            try:
+                irrigation_scheduler = IrrigationScheduler(
+                    auto_controller=auto_irrigation,
+                    schedules_path="/home/pi/smart_farm/config/schedules.json",
+                )
+                print("✅ IrrigationScheduler 초기화 완료")
+            except Exception as _se:
+                print(f"⚠️  IrrigationScheduler 초기화 실패: {_se}")
+                irrigation_scheduler = None
         except Exception as e:
             print(f"⚠️  토양 센서 초기화 실패 (센서 미연결?): {e}")
             soil_sensor_manager = None
@@ -719,6 +733,19 @@ def set_irrigation_mode():
         return jsonify({'success': False, 'error': '자동 관수 시스템 없음'}), 503
     mode = request.json.get('mode')
     ok, msg = auto_irrigation.set_mode(mode)
+
+    # ── 스케줄러 start / stop 연동 ────────────────
+    global irrigation_scheduler
+    if irrigation_scheduler:
+        if mode == 'schedule':
+            if not irrigation_scheduler.running:
+                irrigation_scheduler.start()
+                print("[Mode] 스케줄러 시작됨")
+        else:
+            if irrigation_scheduler.running:
+                irrigation_scheduler.stop()
+                print("[Mode] 스케줄러 중지됨")
+
     return jsonify({'success': ok, 'message': msg})
 
 
@@ -1209,6 +1236,31 @@ def save_irrigation_thresholds():
 # ============================================================
 # 📅 스케줄 API  (Stage 5.5)
 # ============================================================
+
+@app.route('/api/schedules/next', methods=['GET'])
+def get_next_schedule():
+    """다음 실행 예정 스케줄 반환."""
+    if not irrigation_scheduler:
+        return jsonify({'success': False, 'message': '스케줄러 초기화 안 됨'})
+    next_s = irrigation_scheduler.get_next_schedule()
+    if next_s:
+        return jsonify({'success': True, 'next_schedule': next_s})
+    return jsonify({'success': True, 'next_schedule': None, 'message': '예정된 스케줄 없음'})
+
+
+@app.route('/api/schedules/status', methods=['GET'])
+def get_scheduler_status():
+    """스케줄러 실행 상태와 다음 스케줄 반환."""
+    if not irrigation_scheduler:
+        return jsonify({'success': False, 'running': False, 'message': '초기화 안 됨'})
+    next_s = irrigation_scheduler.get_next_schedule()
+    return jsonify({
+        'success': True,
+        'running': irrigation_scheduler.running,
+        'next_schedule': next_s,
+        'check_interval': irrigation_scheduler.check_interval,
+    })
+
 
 @app.route('/api/schedules', methods=['GET'])
 def get_schedules():
