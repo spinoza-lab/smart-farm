@@ -370,3 +370,377 @@ function showAlert(message, type = 'info') {
         if (alertDiv.parentElement) alertDiv.remove();
     }, 3000);
 }
+
+
+// ========================================
+// 자동 관수 설정 탭 JavaScript (settings.js에 추가)
+// ========================================
+
+// ── 자동 관수 탭 활성화 시 초기화 ──────────────────────────
+const autoControlTab = document.querySelector('button[data-bs-target="#auto-control"]');
+if (autoControlTab) {
+    autoControlTab.addEventListener('shown.bs.tab', function () {
+        loadAutoControlSettings();
+    });
+}
+
+// ── 초기 로드 (페이지 열릴 때 미리 로드) ──────────────────
+document.addEventListener('DOMContentLoaded', function () {
+    // 기존 DOMContentLoaded 로직에 추가
+    buildZoneThresholdGrid();
+    loadAutoControlSettings();
+});
+
+// ── 전체 설정 로드 ─────────────────────────────────────────
+function loadAutoControlSettings() {
+    loadIrrigationConfig();
+    loadSchedules();
+}
+
+// ── ① 시스템 설정 로드 ────────────────────────────────────
+function loadIrrigationConfig() {
+    fetch('/api/irrigation/config')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+            const cfg = data.config;
+            document.getElementById('checkInterval').value      = cfg.check_interval       ?? 600;
+            document.getElementById('irrigationDuration').value = cfg.irrigation_duration  ?? 300;
+            document.getElementById('minTankLevel').value       = cfg.min_tank_level       ?? 20;
+            document.getElementById('zoneInterval').value       = cfg.zone_interval        ?? 10;
+            updateConfigLabels();
+
+            // 현재 모드 반영
+            if (cfg.mode) updateModeButtons(cfg.mode);
+        })
+        .catch(e => console.error('설정 로드 실패:', e));
+
+    // 임계값 로드
+    fetch('/api/irrigation/thresholds')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+            data.thresholds.forEach(item => {
+                const el = document.getElementById(`threshold_${item.zone_id}`);
+                if (el) {
+                    el.value = item.threshold;
+                    const lbl = document.getElementById(`thresholdLbl_${item.zone_id}`);
+                    if (lbl) lbl.textContent = item.threshold + '%';
+                }
+            });
+        })
+        .catch(e => console.error('임계값 로드 실패:', e));
+
+    // 현재 모드 로드
+    fetch('/api/irrigation/status')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.data) updateModeButtons(data.data.mode);
+        })
+        .catch(() => {});
+}
+
+// ── ② 설정 저장 ───────────────────────────────────────────
+function saveIrrigationConfig() {
+    const cfg = {
+        check_interval:      parseInt(document.getElementById('checkInterval').value),
+        irrigation_duration: parseInt(document.getElementById('irrigationDuration').value),
+        min_tank_level:      parseFloat(document.getElementById('minTankLevel').value),
+        zone_interval:       parseInt(document.getElementById('zoneInterval').value)
+    };
+
+    // 유효성 검증
+    if (cfg.check_interval < 60)      { showAlert('체크 주기는 60초 이상이어야 합니다.', 'warning'); return; }
+    if (cfg.irrigation_duration < 10) { showAlert('관수 시간은 10초 이상이어야 합니다.', 'warning'); return; }
+    if (cfg.min_tank_level < 5)       { showAlert('최소 탱크 수위는 5% 이상이어야 합니다.', 'warning'); return; }
+
+    fetch('/api/irrigation/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('✅ 시스템 설정이 저장되었습니다.', 'success');
+            updateConfigLabels();
+        } else {
+            showAlert('저장 실패: ' + (data.error || '알 수 없는 오류'), 'danger');
+        }
+    })
+    .catch(e => { showAlert('저장 중 오류: ' + e.message, 'danger'); });
+}
+
+// ── ③ 모드 변경 ───────────────────────────────────────────
+function setIrrigationMode(mode) {
+    fetch('/api/irrigation/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            updateModeButtons(mode);
+            showAlert(`모드가 [${modeLabel(mode)}]으로 변경되었습니다.`, 'success');
+        } else {
+            showAlert('모드 변경 실패: ' + (data.error || data.message), 'danger');
+        }
+    })
+    .catch(e => showAlert('모드 변경 오류: ' + e.message, 'danger'));
+}
+
+function updateModeButtons(mode) {
+    const map = { manual: 'modeManualBtn', auto: 'modeAutoBtn', schedule: 'modeScheduleBtn' };
+    Object.entries(map).forEach(([m, id]) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.className = btn.className.replace(/btn-(outline-)?(secondary|primary|success|warning)/g, '');
+        if (m === mode) {
+            const colorMap = { manual: 'btn-secondary', auto: 'btn-primary', schedule: 'btn-success' };
+            btn.classList.add(colorMap[m]);
+        } else {
+            const outlineMap = { manual: 'btn-outline-secondary', auto: 'btn-outline-primary', schedule: 'btn-outline-success' };
+            btn.classList.add(outlineMap[m]);
+        }
+    });
+    const lbl = document.getElementById('currentModeLabel');
+    if (lbl) lbl.textContent = modeLabel(mode);
+}
+
+function modeLabel(mode) {
+    return { manual: '수동 (Manual)', auto: '자동 (Auto)', schedule: '스케줄 (Schedule)' }[mode] || mode;
+}
+
+// ── ④ 설정값 +/- 조절 + 레이블 갱신 ──────────────────────
+function adjustConfigValue(fieldId, delta) {
+    const el = document.getElementById(fieldId);
+    if (!el) return;
+    let v = parseInt(el.value) + delta;
+    v = Math.max(parseInt(el.min), Math.min(parseInt(el.max), v));
+    el.value = v;
+    updateConfigLabels();
+}
+
+function updateConfigLabels() {
+    const ci  = parseInt(document.getElementById('checkInterval')?.value || 600);
+    const dur = parseInt(document.getElementById('irrigationDuration')?.value || 300);
+
+    const ciLbl = document.getElementById('checkIntervalMin');
+    if (ciLbl) ciLbl.textContent = ci >= 60 ? Math.floor(ci / 60) + '분' : ci + '초';
+
+    const dLbl = document.getElementById('irrigationDurationMin');
+    if (dLbl) {
+        const m = Math.floor(dur / 60), s = dur % 60;
+        dLbl.textContent = m > 0 ? `${m}분 ${s > 0 ? s + '초' : ''}`.trim() : `${s}초`;
+    }
+}
+
+// ── ⑤ 12구역 임계값 그리드 빌드 ──────────────────────────
+function buildZoneThresholdGrid() {
+    const grid = document.getElementById('zoneThresholdGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    for (let i = 1; i <= 12; i++) {
+        grid.innerHTML += `
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card card-body p-2 text-center">
+                <small class="fw-bold text-primary">구역 ${i}</small>
+                <div class="fw-bold" id="thresholdLbl_${i}">40%</div>
+                <input type="range" class="form-range" id="threshold_${i}"
+                       min="10" max="80" value="40"
+                       oninput="document.getElementById('thresholdLbl_${i}').textContent=this.value+'%'">
+            </div>
+        </div>`;
+    }
+}
+
+// ── ⑥ 일괄 설정 ───────────────────────────────────────────
+function updateBulkThreshold(val) {
+    document.getElementById('bulkThresholdVal').textContent = val;
+}
+
+function applyBulkThreshold() {
+    const val = document.getElementById('bulkThreshold').value;
+    for (let i = 1; i <= 12; i++) {
+        const el = document.getElementById(`threshold_${i}`);
+        if (el) {
+            el.value = val;
+            const lbl = document.getElementById(`thresholdLbl_${i}`);
+            if (lbl) lbl.textContent = val + '%';
+        }
+    }
+    showAlert(`전체 12구역 임계값을 ${val}%로 설정했습니다. [전체 저장] 버튼을 눌러 적용하세요.`, 'info');
+}
+
+// ── ⑦ 임계값 전체 저장 ────────────────────────────────────
+function saveAllThresholds() {
+    const thresholds = [];
+    for (let i = 1; i <= 12; i++) {
+        const el = document.getElementById(`threshold_${i}`);
+        if (el) thresholds.push({ zone_id: i, threshold: parseFloat(el.value) });
+    }
+
+    fetch('/api/irrigation/thresholds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thresholds })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('✅ 12구역 임계값이 저장되었습니다.', 'success');
+        } else {
+            showAlert('저장 실패: ' + (data.error || '알 수 없는 오류'), 'danger');
+        }
+    })
+    .catch(e => showAlert('저장 오류: ' + e.message, 'danger'));
+}
+
+// ── ⑧ 스케줄 목록 로드 ────────────────────────────────────
+const DAY_NAMES = ['월', '화', '수', '목', '금', '토', '일'];
+
+function loadSchedules() {
+    fetch('/api/schedules')
+        .then(r => r.json())
+        .then(data => {
+            const tbody = document.getElementById('scheduleTableBody');
+            if (!tbody) return;
+
+            const schedules = data.schedules || [];
+            if (schedules.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">
+                    <i class="bi bi-calendar-x"></i> 등록된 스케줄이 없습니다</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = schedules.map(s => {
+                const dur    = s.duration || 0;
+                const m = Math.floor(dur / 60), sec = dur % 60;
+                const durStr = m > 0 ? `${m}분 ${sec > 0 ? sec + '초' : ''}`.trim() : `${sec}초`;
+
+                const days   = s.days && s.days.length > 0
+                    ? s.days.map(d => DAY_NAMES[d]).join('/')
+                    : '매일';
+
+                const badge  = s.enabled
+                    ? `<span class="badge bg-success">활성</span>`
+                    : `<span class="badge bg-secondary">중지</span>`;
+
+                return `
+                <tr id="schedRow_${s.id}">
+                    <td><small class="text-muted">#${s.id}</small></td>
+                    <td><strong>구역 ${s.zone_id}</strong></td>
+                    <td><i class="bi bi-clock"></i> ${s.start_time}</td>
+                    <td>${durStr}</td>
+                    <td><small>${days}</small></td>
+                    <td>
+                        <button class="btn btn-sm ${s.enabled ? 'btn-warning' : 'btn-success'}"
+                                onclick="toggleSchedule(${s.id}, ${s.enabled})" style="min-width:60px">
+                            ${s.enabled ? '<i class="bi bi-pause"></i> 중지' : '<i class="bi bi-play"></i> 시작'}
+                        </button>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" onclick="deleteSchedule(${s.id})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>`;
+            }).join('');
+        })
+        .catch(e => console.error('스케줄 로드 실패:', e));
+}
+
+// ── ⑨ 스케줄 모달 열기 ────────────────────────────────────
+function openScheduleModal() {
+    document.getElementById('schedZone').value   = '';
+    document.getElementById('schedTime').value   = '06:00';
+    document.getElementById('schedDurMin').value = '5';
+    document.getElementById('schedDurSec').value = '0';
+    document.getElementById('dayAll').checked    = false;
+    document.querySelectorAll('.day-check').forEach(cb => cb.checked = false);
+    updateSchedDurLabel();
+    new bootstrap.Modal(document.getElementById('scheduleModal')).show();
+}
+
+function toggleAllDays(checked) {
+    document.querySelectorAll('.day-check').forEach(cb => cb.checked = checked);
+}
+
+function updateSchedDurLabel() {
+    const m   = parseInt(document.getElementById('schedDurMin')?.value || 0);
+    const s   = parseInt(document.getElementById('schedDurSec')?.value || 0);
+    const lbl = document.getElementById('schedDurLabel');
+    if (lbl) lbl.textContent = `${m}분 ${s}초`;
+}
+
+// ── ⑩ 스케줄 저장 ─────────────────────────────────────────
+function saveSchedule() {
+    const zone_id = parseInt(document.getElementById('schedZone').value);
+    if (!zone_id) { showAlert('구역을 선택하세요.', 'warning'); return; }
+
+    const time    = document.getElementById('schedTime').value;
+    if (!time)    { showAlert('시작 시간을 입력하세요.', 'warning'); return; }
+
+    const durMin  = parseInt(document.getElementById('schedDurMin').value || 0);
+    const durSec  = parseInt(document.getElementById('schedDurSec').value || 0);
+    const duration = durMin * 60 + durSec;
+    if (duration < 10) { showAlert('관수 시간은 10초 이상이어야 합니다.', 'warning'); return; }
+
+    // 선택된 요일 (0=월 ~ 6=일)
+    const days = [];
+    document.querySelectorAll('.day-check:checked').forEach(cb => days.push(parseInt(cb.value)));
+
+    fetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zone_id, start_time: time, duration, days })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('scheduleModal')).hide();
+            showAlert(`✅ 스케줄이 추가되었습니다. (구역 ${zone_id}, ${time})`, 'success');
+            loadSchedules();
+        } else {
+            showAlert('저장 실패: ' + (data.error || '알 수 없는 오류'), 'danger');
+        }
+    })
+    .catch(e => showAlert('저장 오류: ' + e.message, 'danger'));
+}
+
+// ── ⑪ 스케줄 활성화/비활성화 ─────────────────────────────
+function toggleSchedule(id, currentEnabled) {
+    fetch(`/api/schedules/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !currentEnabled })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(currentEnabled ? '스케줄이 중지되었습니다.' : '스케줄이 활성화되었습니다.', 'info');
+            loadSchedules();
+        } else {
+            showAlert('변경 실패: ' + (data.error || '알 수 없는 오류'), 'danger');
+        }
+    })
+    .catch(e => showAlert('오류: ' + e.message, 'danger'));
+}
+
+// ── ⑫ 스케줄 삭제 ─────────────────────────────────────────
+function deleteSchedule(id) {
+    if (!confirm(`스케줄 #${id}를 삭제하시겠습니까?`)) return;
+
+    fetch(`/api/schedules/${id}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(`스케줄 #${id}가 삭제되었습니다.`, 'info');
+                loadSchedules();
+            } else {
+                showAlert('삭제 실패: ' + (data.error || '알 수 없는 오류'), 'danger');
+            }
+        })
+        .catch(e => showAlert('삭제 오류: ' + e.message, 'danger'));
+}

@@ -1064,6 +1064,252 @@ def analytics_irrigation_history():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+# ============================================================
+# ⚙️  자동 관수 설정 API  (Stage 5.5)
+# ============================================================
+
+SOIL_SENSORS_PATH = '/home/pi/smart_farm/config/soil_sensors.json'
+SCHEDULES_PATH    = '/home/pi/smart_farm/config/schedules.json'
+
+def _load_soil_config():
+    """soil_sensors.json 로드"""
+    import json
+    try:
+        with open(SOIL_SENSORS_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {
+            "modbus": {},
+            "sensors": [
+                {"zone_id": i, "sensor_address": i, "name": f"구역 {i}",
+                 "enabled": True, "moisture_threshold": 40.0}
+                for i in range(1, 13)
+            ],
+            "irrigation": {
+                "min_tank_level": 20.0, "irrigation_duration": 300,
+                "zone_interval": 10,    "check_interval": 600,
+                "max_zones_simultaneous": 1
+            }
+        }
+
+def _save_soil_config(cfg):
+    """soil_sensors.json 저장"""
+    import json, os
+    os.makedirs(os.path.dirname(SOIL_SENSORS_PATH), exist_ok=True)
+    with open(SOIL_SENSORS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+def _load_schedules():
+    """schedules.json 로드"""
+    import json
+    try:
+        with open(SCHEDULES_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {"schedules": []}
+
+def _save_schedules(data):
+    """schedules.json 저장"""
+    import json, os
+    os.makedirs(os.path.dirname(SCHEDULES_PATH), exist_ok=True)
+    with open(SCHEDULES_PATH, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+@app.route('/api/irrigation/config', methods=['GET'])
+def get_irrigation_config():
+    """자동 관수 기본 설정 조회"""
+    try:
+        cfg = _load_soil_config()
+        irr = cfg.get('irrigation', {})
+        # 현재 모드도 포함
+        mode = 'manual'
+        if auto_irrigation:
+            mode = auto_irrigation.mode
+        irr['mode'] = mode
+        return jsonify({'success': True, 'config': irr})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/irrigation/config', methods=['POST'])
+def save_irrigation_config():
+    """자동 관수 기본 설정 저장 및 컨트롤러 즉시 반영"""
+    try:
+        data = request.get_json()
+        cfg  = _load_soil_config()
+
+        irr = cfg.get('irrigation', {})
+        if 'check_interval'      in data: irr['check_interval']      = int(data['check_interval'])
+        if 'irrigation_duration' in data: irr['irrigation_duration'] = int(data['irrigation_duration'])
+        if 'min_tank_level'      in data: irr['min_tank_level']      = float(data['min_tank_level'])
+        if 'zone_interval'       in data: irr['zone_interval']       = int(data['zone_interval'])
+        cfg['irrigation'] = irr
+
+        _save_soil_config(cfg)
+
+        # 실행 중인 AutoIrrigationController에 즉시 반영
+        if auto_irrigation:
+            auto_irrigation.irrigation_cfg = irr
+            print(f"✅ 관수 설정 즉시 반영: check={irr.get('check_interval')}s, "
+                  f"duration={irr.get('irrigation_duration')}s")
+
+        return jsonify({'success': True, 'message': '관수 기본 설정이 저장되었습니다'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/irrigation/thresholds', methods=['GET'])
+def get_irrigation_thresholds():
+    """12구역 수분 임계값 조회"""
+    try:
+        cfg = _load_soil_config()
+        thresholds = [
+            {
+                'zone_id':   s['zone_id'],
+                'name':      s.get('name', f"구역 {s['zone_id']}"),
+                'threshold': s.get('moisture_threshold', 40.0)
+            }
+            for s in cfg.get('sensors', [])
+        ]
+        return jsonify({'success': True, 'thresholds': thresholds})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/irrigation/thresholds', methods=['POST'])
+def save_irrigation_thresholds():
+    """12구역 수분 임계값 일괄 저장 및 컨트롤러 즉시 반영"""
+    try:
+        data       = request.get_json()
+        thresholds = data.get('thresholds', [])   # [{zone_id, threshold}, ...]
+
+        cfg     = _load_soil_config()
+        thr_map = {int(t['zone_id']): float(t['threshold']) for t in thresholds}
+
+        for sensor in cfg.get('sensors', []):
+            zid = int(sensor['zone_id'])
+            if zid in thr_map:
+                sensor['moisture_threshold'] = thr_map[zid]
+
+        _save_soil_config(cfg)
+
+        # AutoIrrigationController zone_thresholds 즉시 반영
+        if auto_irrigation:
+            auto_irrigation.zone_thresholds.update(thr_map)
+            print(f"✅ 임계값 즉시 반영: {thr_map}")
+
+        return jsonify({'success': True,
+                        'message': f'{len(thresholds)}개 구역 임계값이 저장되었습니다'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# 📅 스케줄 API  (Stage 5.5)
+# ============================================================
+
+@app.route('/api/schedules', methods=['GET'])
+def get_schedules():
+    """스케줄 목록 조회"""
+    try:
+        data = _load_schedules()
+        return jsonify({'success': True, 'schedules': data.get('schedules', [])})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/schedules', methods=['POST'])
+def add_schedule():
+    """스케줄 추가"""
+    try:
+        from datetime import datetime as dt
+        body      = request.get_json()
+        zone_id   = int(body.get('zone_id', 0))
+        start_time = body.get('start_time', '')
+        duration  = int(body.get('duration', 300))
+        days      = [int(d) for d in body.get('days', [])]
+
+        if not zone_id or not start_time:
+            return jsonify({'success': False, 'error': 'zone_id, start_time 필수'}), 400
+
+        # HH:MM 형식 검증
+        try:
+            dt.strptime(start_time, '%H:%M')
+        except ValueError:
+            return jsonify({'success': False, 'error': '시간 형식이 HH:MM이어야 합니다'}), 400
+
+        data = _load_schedules()
+        schedules = data.get('schedules', [])
+
+        new_id = max((s.get('id', 0) for s in schedules), default=0) + 1
+        new_schedule = {
+            'id':         new_id,
+            'zone_id':    zone_id,
+            'start_time': start_time,
+            'duration':   duration,
+            'days':       days,
+            'enabled':    True,
+            'created_at': dt.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+        schedules.append(new_schedule)
+        _save_schedules({'schedules': schedules})
+
+        print(f"✅ 스케줄 추가: #{new_id} 구역{zone_id} {start_time} {duration}s")
+        return jsonify({'success': True, 'schedule': new_schedule,
+                        'message': f'스케줄 #{new_id}가 추가되었습니다'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/schedules/<int:schedule_id>', methods=['DELETE'])
+def delete_schedule(schedule_id):
+    """스케줄 삭제"""
+    try:
+        data      = _load_schedules()
+        schedules = data.get('schedules', [])
+        new_list  = [s for s in schedules if s.get('id') != schedule_id]
+
+        if len(new_list) == len(schedules):
+            return jsonify({'success': False, 'error': f'스케줄 #{schedule_id} 없음'}), 404
+
+        _save_schedules({'schedules': new_list})
+        print(f"🗑️  스케줄 #{schedule_id} 삭제")
+        return jsonify({'success': True, 'message': f'스케줄 #{schedule_id}가 삭제되었습니다'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/schedules/<int:schedule_id>', methods=['PATCH'])
+def toggle_schedule(schedule_id):
+    """스케줄 활성화/비활성화"""
+    try:
+        body      = request.get_json()
+        enabled   = bool(body.get('enabled', True))
+        data      = _load_schedules()
+        schedules = data.get('schedules', [])
+
+        found = False
+        for s in schedules:
+            if s.get('id') == schedule_id:
+                s['enabled'] = enabled
+                found = True
+                break
+
+        if not found:
+            return jsonify({'success': False, 'error': f'스케줄 #{schedule_id} 없음'}), 404
+
+        _save_schedules({'schedules': schedules})
+        status = '활성화' if enabled else '비활성화'
+        print(f"🔄 스케줄 #{schedule_id} {status}")
+        return jsonify({'success': True, 'message': f'스케줄 #{schedule_id}가 {status}되었습니다'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("🌐 스마트 관수 시스템 웹 대시보드 v2")

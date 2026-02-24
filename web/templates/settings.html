@@ -385,13 +385,291 @@
                 </div>
             </div>
 
-            <!-- 자동 관수 설정 탭 -->
+            <!-- 자동 관수 설정 탭 (settings.html 교체용) -->
             <div class="tab-pane fade" id="auto-control" role="tabpanel">
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle"></i> 
-                    <strong>준비 중:</strong> 자동 관수 제어 기능은 Stage 4에서 구현 예정입니다.
+
+                <div class="row">
+                    <!-- ① 시스템 설정 카드 -->
+                    <div class="col-lg-5">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-gear-wide-connected"></i> 자동 관수 시스템 설정
+                            </div>
+                            <div class="card-body">
+
+                                <!-- 현재 모드 + 변경 -->
+                                <div class="mb-4">
+                                    <label class="form-label">현재 동작 모드</label>
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <button id="modeManualBtn" class="btn btn-outline-secondary flex-fill"
+                                                onclick="setIrrigationMode('manual')">
+                                            <i class="bi bi-hand-index"></i> 수동
+                                        </button>
+                                        <button id="modeAutoBtn" class="btn btn-outline-primary flex-fill"
+                                                onclick="setIrrigationMode('auto')">
+                                            <i class="bi bi-robot"></i> 자동
+                                        </button>
+                                        <button id="modeScheduleBtn" class="btn btn-outline-success flex-fill"
+                                                onclick="setIrrigationMode('schedule')">
+                                            <i class="bi bi-calendar-check"></i> 스케줄
+                                        </button>
+                                    </div>
+                                    <div class="mt-2 p-2 rounded bg-light text-center">
+                                        <small>현재: <strong id="currentModeLabel" class="text-primary">--</strong></small>
+                                    </div>
+                                </div>
+
+                                <hr>
+
+                                <!-- 체크 주기 -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="bi bi-arrow-repeat"></i> 자동 체크 주기
+                                    </label>
+                                    <div class="number-input-group">
+                                        <button class="btn btn-secondary btn-number"
+                                                onclick="adjustConfigValue('checkInterval', -60)">
+                                            <i class="bi bi-dash"></i>
+                                        </button>
+                                        <input type="number" class="form-control" id="checkInterval"
+                                               value="600" min="60" max="3600" step="60">
+                                        <button class="btn btn-secondary btn-number"
+                                                onclick="adjustConfigValue('checkInterval', 60)">
+                                            <i class="bi bi-plus"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">초 단위 (<span id="checkIntervalMin">10</span>분 주기)</small>
+                                </div>
+
+                                <!-- 기본 관수 시간 -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="bi bi-droplet"></i> 기본 관수 시간
+                                    </label>
+                                    <div class="number-input-group">
+                                        <button class="btn btn-secondary btn-number"
+                                                onclick="adjustConfigValue('irrigationDuration', -30)">
+                                            <i class="bi bi-dash"></i>
+                                        </button>
+                                        <input type="number" class="form-control" id="irrigationDuration"
+                                               value="300" min="10" max="3600" step="30">
+                                        <button class="btn btn-secondary btn-number"
+                                                onclick="adjustConfigValue('irrigationDuration', 30)">
+                                            <i class="bi bi-plus"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">초 단위 (<span id="irrigationDurationMin">5</span>분)</small>
+                                </div>
+
+                                <!-- 최소 탱크 수위 -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="bi bi-water"></i> 관수 중단 탱크 수위 (%)
+                                    </label>
+                                    <div class="number-input-group">
+                                        <button class="btn btn-secondary btn-number"
+                                                onclick="adjustConfigValue('minTankLevel', -5)">
+                                            <i class="bi bi-dash"></i>
+                                        </button>
+                                        <input type="number" class="form-control" id="minTankLevel"
+                                               value="20" min="5" max="50" step="5">
+                                        <button class="btn btn-secondary btn-number"
+                                                onclick="adjustConfigValue('minTankLevel', 5)">
+                                            <i class="bi bi-plus"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">이 수위 미만이면 관수 중단</small>
+                                </div>
+
+                                <!-- 구역 간 대기 -->
+                                <div class="mb-4">
+                                    <label class="form-label">
+                                        <i class="bi bi-pause-circle"></i> 구역 간 대기 시간
+                                    </label>
+                                    <div class="number-input-group">
+                                        <button class="btn btn-secondary btn-number"
+                                                onclick="adjustConfigValue('zoneInterval', -5)">
+                                            <i class="bi bi-dash"></i>
+                                        </button>
+                                        <input type="number" class="form-control" id="zoneInterval"
+                                               value="10" min="0" max="300" step="5">
+                                        <button class="btn btn-secondary btn-number"
+                                                onclick="adjustConfigValue('zoneInterval', 5)">
+                                            <i class="bi bi-plus"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">초 단위 (구역 전환 시 펌프 안정화)</small>
+                                </div>
+
+                                <button class="btn btn-success btn-lg w-100" onclick="saveIrrigationConfig()">
+                                    <i class="bi bi-check-circle"></i> 시스템 설정 저장
+                                </button>
+
+                            </div>
+                        </div>
+                    </div><!-- /col-lg-5 -->
+
+                    <!-- ② 임계값 일괄 설정 카드 -->
+                    <div class="col-lg-7">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-sliders2"></i> 12구역 수분 임계값 설정</span>
+                                <button class="btn btn-sm btn-outline-primary" onclick="saveAllThresholds()">
+                                    <i class="bi bi-save"></i> 전체 저장
+                                </button>
+                            </div>
+                            <div class="card-body">
+
+                                <!-- 일괄 설정 -->
+                                <div class="mb-3 p-3 bg-light rounded">
+                                    <label class="form-label fw-bold">
+                                        <i class="bi bi-distribute-horizontal"></i>
+                                        전체 일괄 설정: <span id="bulkThresholdVal">40</span>%
+                                    </label>
+                                    <input type="range" class="form-range" id="bulkThreshold"
+                                           min="10" max="80" value="40"
+                                           oninput="updateBulkThreshold(this.value)">
+                                    <button class="btn btn-primary w-100 mt-2" onclick="applyBulkThreshold()">
+                                        <i class="bi bi-check2-all"></i> 전체 12구역에 적용
+                                    </button>
+                                </div>
+
+                                <!-- 12구역 개별 슬라이더 -->
+                                <div class="row g-2" id="zoneThresholdGrid">
+                                    <!-- JS로 동적 생성 -->
+                                </div>
+
+                                <div class="alert alert-info mt-3 mb-0">
+                                    <i class="bi bi-info-circle"></i>
+                                    임계값 미만으로 수분이 떨어지면 <strong>자동 모드</strong>에서 관수를 시작합니다.
+                                </div>
+                            </div>
+                        </div>
+                    </div><!-- /col-lg-7 -->
+                </div><!-- /row -->
+
+                <!-- ③ 스케줄 관리 카드 -->
+                <div class="card mt-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-calendar-week"></i> 스케줄 관수 설정</span>
+                        <button class="btn btn-success" onclick="openScheduleModal()">
+                            <i class="bi bi-plus-circle"></i> 스케줄 추가
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0" id="scheduleTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:70px">ID</th>
+                                        <th>구역</th>
+                                        <th>시작 시간</th>
+                                        <th>관수 시간</th>
+                                        <th>요일</th>
+                                        <th style="width:100px">활성</th>
+                                        <th style="width:80px">삭제</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="scheduleTableBody">
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted py-4">
+                                            <i class="bi bi-calendar-x"></i> 등록된 스케줄이 없습니다
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
-            </div>
+
+            </div><!-- /tab-pane auto-control -->
+
+            <!-- 스케줄 추가 모달 -->
+            <div class="modal fade" id="scheduleModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">
+                                <i class="bi bi-calendar-plus"></i> 스케줄 추가
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+
+                            <!-- 구역 선택 -->
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">관수 구역</label>
+                                <select class="form-select" id="schedZone">
+                                    <option value="">구역 선택...</option>
+                                    <option value="1">구역 1</option><option value="2">구역 2</option>
+                                    <option value="3">구역 3</option><option value="4">구역 4</option>
+                                    <option value="5">구역 5</option><option value="6">구역 6</option>
+                                    <option value="7">구역 7</option><option value="8">구역 8</option>
+                                    <option value="9">구역 9</option><option value="10">구역 10</option>
+                                    <option value="11">구역 11</option><option value="12">구역 12</option>
+                                </select>
+                            </div>
+
+                            <!-- 시작 시간 -->
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">시작 시간</label>
+                                <input type="time" class="form-control" id="schedTime" value="06:00">
+                            </div>
+
+                            <!-- 관수 시간 -->
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">
+                                    관수 시간: <span id="schedDurLabel">5분 0초</span>
+                                </label>
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label class="form-label text-muted small">분</label>
+                                        <input type="number" class="form-control" id="schedDurMin"
+                                               value="5" min="0" max="60"
+                                               oninput="updateSchedDurLabel()">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label text-muted small">초</label>
+                                        <input type="number" class="form-control" id="schedDurSec"
+                                               value="0" min="0" max="59"
+                                               oninput="updateSchedDurLabel()">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 요일 선택 -->
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">실행 요일</label>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" id="dayAll"
+                                               onchange="toggleAllDays(this.checked)">
+                                        <label class="form-check-label fw-bold" for="dayAll">매일</label>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-2 flex-wrap mt-2" id="dayCheckboxes">
+                                    <div class="form-check form-check-inline"><input class="form-check-input day-check" type="checkbox" id="day0" value="0"><label class="form-check-label" for="day0">월</label></div>
+                                    <div class="form-check form-check-inline"><input class="form-check-input day-check" type="checkbox" id="day1" value="1"><label class="form-check-label" for="day1">화</label></div>
+                                    <div class="form-check form-check-inline"><input class="form-check-input day-check" type="checkbox" id="day2" value="2"><label class="form-check-label" for="day2">수</label></div>
+                                    <div class="form-check form-check-inline"><input class="form-check-input day-check" type="checkbox" id="day3" value="3"><label class="form-check-label" for="day3">목</label></div>
+                                    <div class="form-check form-check-inline"><input class="form-check-input day-check" type="checkbox" id="day4" value="4"><label class="form-check-label" for="day4">금</label></div>
+                                    <div class="form-check form-check-inline"><input class="form-check-input day-check" type="checkbox" id="day5" value="5"><label class="form-check-label" for="day5">토</label></div>
+                                    <div class="form-check form-check-inline"><input class="form-check-input day-check" type="checkbox" id="day6" value="6"><label class="form-check-label" for="day6">일</label></div>
+                                </div>
+                                <small class="text-muted">요일 미선택 시 매일 실행</small>
+                            </div>
+
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                            <button type="button" class="btn btn-success" onclick="saveSchedule()">
+                                <i class="bi bi-check-circle"></i> 저장
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div><!-- /scheduleModal -->
+
 
             <!-- 호스건 설정 탭 -->
             <div class="tab-pane fade" id="hose-gun" role="tabpanel">
