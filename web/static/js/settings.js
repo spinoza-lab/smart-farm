@@ -491,7 +491,8 @@ function setIrrigationMode(mode) {
 }
 
 function updateModeButtons(mode) {
-    const map = { manual: 'modeManualBtn', auto: 'modeAutoBtn', schedule: 'modeScheduleBtn' };
+    if (mode === 'schedule') mode = 'auto'; // patch_v4d: schedule→auto
+    const map = { manual: 'modeManualBtn', auto: 'modeAutoBtn' };
     Object.entries(map).forEach(([m, id]) => {
         const btn = document.getElementById(id);
         if (!btn) return;
@@ -509,7 +510,8 @@ function updateModeButtons(mode) {
 }
 
 function modeLabel(mode) {
-    return { manual: '수동 (Manual)', auto: '자동 (Auto)', schedule: '스케줄 (Schedule)' }[mode] || mode;
+    if (mode === 'schedule') mode = 'auto';
+    return { manual: '수동 (Manual)', auto: '자동 (Auto)' }[mode] || mode;
 }
 
 // ── ④ 설정값 +/- 조절 + 레이블 갱신 ──────────────────────
@@ -614,34 +616,64 @@ function loadSchedules() {
                 return;
             }
 
+            // 스케줄 데이터 전역 캐시 (편집용)
+            window._scheduleCache = {};
+            schedules.forEach(s => { window._scheduleCache[s.id] = s; });
+
             tbody.innerHTML = schedules.map(s => {
                 const dur    = s.duration || 0;
                 const m = Math.floor(dur / 60), sec = dur % 60;
                 const durStr = m > 0 ? `${m}분 ${sec > 0 ? sec + '초' : ''}`.trim() : `${sec}초`;
 
-                const days   = s.days && s.days.length > 0
-                    ? s.days.map(d => DAY_NAMES[d]).join('/')
-                    : '매일';
+                // 타입 뱃지
+                const isRoutine = s.type === 'routine' || (s.interval_days != null && s.interval_days > 0 && s.type !== 'schedule');
+                const typeBadge = isRoutine
+                    ? `<span class="badge bg-info text-dark">루틴</span>`
+                    : `<span class="badge bg-primary">스케줄</span>`;
 
-                const badge  = s.enabled
+                // 조건 표시
+                let condition;
+                if (isRoutine) {
+                    const startDate   = s.start_date || '미설정';
+                    const intervalDay = s.interval_days || 1;
+                    const timeStr     = s.start_time   || '';
+                    condition = `<i class="bi bi-calendar-event"></i> ${startDate}<br><small class="text-muted">매 ${intervalDay}일 · ${timeStr}</small>`;
+                } else {
+                    const days = s.days && s.days.length > 0
+                        ? s.days.map(d => DAY_NAMES[d]).join('/')
+                        : '매일';
+                    condition = `<i class="bi bi-clock"></i> ${s.start_time}<br><small class="text-muted">${days}</small>`;
+                }
+
+                // 수분체크
+                const moistureChk = s.check_moisture
+                    ? `<i class="bi bi-check-circle-fill text-success"></i>`
+                    : `<span class="text-muted small">—</span>`;
+
+                // 상태 뱃지
+                const badge = s.enabled
                     ? `<span class="badge bg-success">활성</span>`
                     : `<span class="badge bg-secondary">중지</span>`;
 
                 return `
                 <tr id="schedRow_${s.id}">
-                    <td><small class="text-muted">#${s.id}</small></td>
-                    <td><strong>구역 ${s.zone_id}</strong></td>
-                    <td><i class="bi bi-clock"></i> ${s.start_time}</td>
+                    <td>${typeBadge}</td>
+                    <td><strong>구역 ${s.zone_id === 0 ? '전체' : s.zone_id}</strong></td>
+                    <td><small>${condition}</small></td>
                     <td>${durStr}</td>
-                    <td><small>${days}</small></td>
+                    <td class="text-center">${moistureChk}</td>
+                    <td>${badge}</td>
                     <td>
-                        <button class="btn btn-sm ${s.enabled ? 'btn-warning' : 'btn-success'}"
-                                onclick="toggleSchedule(${s.id}, ${s.enabled})" style="min-width:60px">
-                            ${s.enabled ? '<i class="bi bi-pause"></i> 중지' : '<i class="bi bi-play"></i> 시작'}
+                        <button class="btn btn-sm btn-outline-secondary me-1"
+                                onclick="editSchedule(${s.id})" title="편집">
+                            <i class="bi bi-pencil"></i>
                         </button>
-                    </td>
-                    <td>
-                        <button class="btn btn-sm btn-danger" onclick="deleteSchedule(${s.id})">
+                        <button class="btn btn-sm ${s.enabled ? 'btn-outline-warning' : 'btn-outline-success'} me-1"
+                                onclick="toggleSchedule(${s.id}, ${s.enabled})" title="${s.enabled ? '중지' : '시작'}">
+                            ${s.enabled ? '<i class="bi bi-pause"></i>' : '<i class="bi bi-play"></i>'}
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger"
+                                onclick="deleteSchedule(${s.id})" title="삭제">
                             <i class="bi bi-trash"></i>
                         </button>
                     </td>
@@ -649,6 +681,7 @@ function loadSchedules() {
             }).join('');
         })
         .catch(e => console.error('스케줄 로드 실패:', e));
+    loadNextSchedule(); // Fix E – patch_v4f
 }
 
 // ── ⑨ 스케줄 모달 열기 ────────────────────────────────────
@@ -748,6 +781,7 @@ function deleteSchedule(id) {
 // ─────────────────────────────────────────────────
 // 다음 실행 스케줄 조회
 // ─────────────────────────────────────────────────
+// Fix E – patch_v4f: 스케줄 탭 진입 / loadSchedules 완료 후 자동 호출
 async function loadNextSchedule() {
     try {
         const res = await fetch('/api/schedules/next');
@@ -804,6 +838,65 @@ function selectScheduleType(type) {
     document.getElementById('btnTypeRoutine').className =
         'btn ' + (!isSched ? 'btn-success' : 'btn-outline-success');
 }
+
+
+// ── 스케줄 편집 (patch_v4) ────────────────────────────────────
+function editSchedule(id) {
+    const row = document.querySelector(`tr[data-id="${id}"]`);
+    if (!row) return;
+    let sched;
+    try { sched = JSON.parse(row.getAttribute('data-sched')); } catch(e) { return; }
+    document.getElementById('editScheduleId').value         = id;
+    document.getElementById('editScheduleZone').value       = sched.zone_id;
+    const rawType = sched.type || 'daily';
+    const type    = (rawType === 'schedule') ? 'interval' : rawType;
+    document.getElementById('editScheduleType').value       = type;
+    document.getElementById('editScheduleTime').value       = sched.start_time || '08:00';
+    document.getElementById('editScheduleDuration').value   = Math.round((sched.duration || 300) / 60);
+    document.getElementById('editScheduleInterval').value   = sched.interval || 3;
+    document.getElementById('editScheduleStartDate').value  = sched.start_date || '';
+    onEditTypeChange();
+    new bootstrap.Modal(document.getElementById('editScheduleModal')).show();
+}
+
+function onEditTypeChange() {
+    const type = document.getElementById('editScheduleType').value;
+    document.getElementById('editStartDateContainer').style.display  = (type === 'interval' || type === 'specific') ? '' : 'none';
+    document.getElementById('editIntervalContainer').style.display   = (type === 'interval') ? '' : 'none';
+}
+
+function saveEditSchedule() {
+    const id     = document.getElementById('editScheduleId').value;
+    const durMin = parseInt(document.getElementById('editScheduleDuration').value);
+    if (!durMin || durMin < 1) { showSettingsAlert('관수 시간을 1분 이상 입력하세요.', 'danger'); return; }
+    const type    = document.getElementById('editScheduleType').value;
+    const payload = {
+        zone_id:    parseInt(document.getElementById('editScheduleZone').value),
+        type:       type,
+        start_time: document.getElementById('editScheduleTime').value,
+        duration:   durMin * 60
+    };
+    if (type === 'interval') {
+        payload.interval   = parseInt(document.getElementById('editScheduleInterval').value);
+        payload.start_date = document.getElementById('editScheduleStartDate').value;
+    } else if (type === 'specific') {
+        payload.start_date = document.getElementById('editScheduleStartDate').value;
+    }
+    fetch(`/api/schedules/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('editScheduleModal')).hide();
+            if (typeof loadSchedules === 'function') loadSchedules();
+            showSettingsAlert('스케줄이 수정되었습니다.', 'success');
+        } else {
+            showSettingsAlert(data.error || '수정 실패', 'danger');
+        }
+    }).catch(() => showSettingsAlert('서버 오류', 'danger'));
+}
+// ── /스케줄 편집 ──────────────────────────────────────────────
 
 function saveNewSchedule() {
     const type     = document.getElementById('newScheduleType').value;
@@ -877,4 +970,173 @@ function showSettingsAlert(msg, type='info') {
     container.prepend(div);
     setTimeout(() => div.remove(), 4000);
 }
+// ── 스케줄 편집 함수 ────────────────────────────────────────────────────────
+function _ensureEditModal() {
+    if (document.getElementById('editScheduleModal')) return;
+    // 모달 DOM이 없으면 동적으로 주입
+    const MODAL_HTML = [
+        '<div class="modal fade" id="editScheduleModal" tabindex="-1" aria-hidden="true">',
+        '<div class="modal-dialog modal-dialog-centered">',
+        '<div class="modal-content">',
+        '<div class="modal-header"><h5 class="modal-title"><i class="bi bi-pencil-square"></i> 스케줄 편집</h5>',
+        '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>',
+        '<div class="modal-body">',
+        '<input type="hidden" id="editSchedId"><input type="hidden" id="editSchedType">',
+        '<div class="row mb-3">',
+        '<div class="col-6"><label class="form-label fw-bold">관수 구역</label>',
+        '<select class="form-select form-select-sm" id="editSchedZone">',
+        '<option value="0">전체 구역</option>',
+        ...Array.from({length:12},(_,i)=>`<option value="${i+1}">구역 ${i+1}</option>`),
+        '</select></div>',
+        '<div class="col-6"><label class="form-label fw-bold">관수 시간: <span id="editSchedDurLabel">5분 0초</span></label>',
+        '<div class="row g-1">',
+        '<div class="col-6"><div class="input-group input-group-sm">',
+        '<input type="number" class="form-control" id="editSchedDurMin" value="5" min="0" max="60" oninput="updateEditDurLabel()">',
+        '<span class="input-group-text">분</span></div></div>',
+        '<div class="col-6"><div class="input-group input-group-sm">',
+        '<input type="number" class="form-control" id="editSchedDurSec" value="0" min="0" max="59" oninput="updateEditDurLabel()">',
+        '<span class="input-group-text">초</span></div></div>',
+        '</div></div></div>',
+        '<div id="editSchedWeekFields">',
+        '<div class="mb-3"><label class="form-label fw-bold">시작 시간</label>',
+        '<input type="time" class="form-control form-control-sm" id="editSchedWeekTime" value="06:00"></div>',
+        '<div class="mb-3"><label class="form-label fw-bold">반복 요일</label>',
+        '<div class="d-flex gap-1 flex-wrap">',
+        ...[['월',0],['화',1],['수',2],['목',3],['금',4],['토',5],['일',6]].map(([n,d])=>`<button type="button" class="btn btn-sm btn-outline-secondary edit-day-btn" data-day="${d}">${n}</button>`),
+        '</div></div></div>',
+        '<div id="editSchedRoutineFields" style="display:none;">',
+        '<div class="row mb-3">',
+        '<div class="col-6"><label class="form-label fw-bold">시작 날짜</label>',
+        '<input type="date" class="form-control form-control-sm" id="editSchedStartDate"></div>',
+        '<div class="col-6"><label class="form-label fw-bold">시작 시간</label>',
+        '<input type="time" class="form-control form-control-sm" id="editSchedRoutineTime" value="06:00"></div>',
+        '</div><div class="mb-3"><label class="form-label fw-bold">반복 간격</label>',
+        '<div class="input-group input-group-sm">',
+        '<input type="number" class="form-control" id="editSchedInterval" value="1" min="1" max="365">',
+        '<span class="input-group-text">일마다</span></div></div>',
+        '<div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="editSchedMoisture">',
+        '<label class="form-check-label" for="editSchedMoisture">수분 부족 시에만 실행</label></div>',
+        '</div></div>',
+        '<div class="modal-footer">',
+        '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>',
+        '<button type="button" class="btn btn-primary" onclick="saveEditSchedule()"><i class="bi bi-check-circle"></i> 저장</button>',
+        '</div></div></div></div>'
+    ].join('');
+    const wrap = document.createElement('div');
+    wrap.innerHTML = MODAL_HTML;
+    document.body.appendChild(wrap.firstChild);
+    document.querySelectorAll('.edit-day-btn').forEach(b => b.addEventListener('click', () => {
+        b.classList.toggle('btn-primary'); b.classList.toggle('btn-outline-secondary'); b.classList.toggle('active');
+    }));
+}
+
+function editSchedule(id) {
+    _ensureEditModal();
+    const s = window._scheduleCache && window._scheduleCache[id];
+    if (!s) { showAlert('스케줄 데이터를 찾을 수 없습니다.', 'warning'); return; }
+
+    const isRoutine = s.type === 'routine' || (s.interval_days != null && s.interval_days > 0 && s.type !== 'schedule');
+
+    // null-safe 헬퍼
+    const $v = (id, v) => { const e=document.getElementById(id); if(e) e.value=v; };
+    const $c = (id, v) => { const e=document.getElementById(id); if(e) e.checked=v; };
+    const $t = (id, v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+    const $d = (id, v) => { const e=document.getElementById(id); if(e) e.style.display=v; };
+
+    $v('editSchedId',   s.id);
+    $v('editSchedZone', s.zone_id || 1);
+    const durMin = Math.floor((s.duration || 300) / 60);
+    const durSec = (s.duration || 300) % 60;
+    $v('editSchedDurMin', durMin);
+    $v('editSchedDurSec', durSec);
+    $t('editSchedDurLabel', `${durMin}분 ${durSec}초`);
+
+    $v('editSchedType', isRoutine ? 'routine' : 'schedule');
+    if (isRoutine) {
+        $d('editSchedRoutineFields', '');
+        $d('editSchedWeekFields',    'none');
+        $v('editSchedStartDate',    s.start_date || '');
+        $v('editSchedRoutineTime',  s.start_time || '06:00');
+        $v('editSchedInterval',     s.interval_days || 1);
+        $c('editSchedMoisture',     !!s.check_moisture);
+    } else {
+        $d('editSchedRoutineFields', 'none');
+        $d('editSchedWeekFields',    '');
+        $v('editSchedWeekTime', s.start_time || '06:00');
+        document.querySelectorAll('.edit-day-btn').forEach(btn => {
+            const day = parseInt(btn.dataset.day);
+            const active = s.days && s.days.includes(day);
+            btn.classList.toggle('btn-primary', active);
+            btn.classList.toggle('btn-outline-secondary', !active);
+            btn.classList.toggle('active', active);
+        });
+    }
+
+    new bootstrap.Modal(document.getElementById('editScheduleModal')).show();
+}
+
+function updateEditDurLabel() {
+    const m = parseInt(document.getElementById('editSchedDurMin')?.value || 0);
+    const s = parseInt(document.getElementById('editSchedDurSec')?.value || 0);
+    const lbl = document.getElementById('editSchedDurLabel');
+    if (lbl) lbl.textContent = `${m}분 ${s}초`;
+}
+
+async function saveEditSchedule() {
+    const id       = parseInt(document.getElementById('editSchedId').value);
+    const type     = document.getElementById('editSchedType').value;
+    const zone_id  = parseInt(document.getElementById('editSchedZone').value);
+    const durMin   = parseInt(document.getElementById('editSchedDurMin').value || 0);
+    const durSec   = parseInt(document.getElementById('editSchedDurSec').value || 0);
+    const duration = durMin * 60 + durSec;
+
+    if (duration < 10) { showAlert('관수 시간은 10초 이상이어야 합니다.', 'warning'); return; }
+
+    let payload = { type, zone_id, duration };
+
+    if (type === 'routine') {
+        const start_date    = document.getElementById('editSchedStartDate').value;
+        const start_time    = document.getElementById('editSchedRoutineTime').value;
+        const interval_days = parseInt(document.getElementById('editSchedInterval').value);
+        const check_moisture= document.getElementById('editSchedMoisture').checked;
+        if (!start_date || !start_time) { showAlert('시작 날짜와 시간을 입력하세요.', 'warning'); return; }
+        if (!interval_days || interval_days < 1) { showAlert('반복 간격을 1일 이상으로 설정하세요.', 'warning'); return; }
+        payload = { ...payload, start_date, start_time, interval_days, check_moisture };
+    } else {
+        const start_time = document.getElementById('editSchedWeekTime').value;
+        const days = [...document.querySelectorAll('.edit-day-btn.active')].map(b => parseInt(b.dataset.day));
+        if (!start_time) { showAlert('시작 시간을 입력하세요.', 'warning'); return; }
+        if (!days.length) { showAlert('요일을 1개 이상 선택하세요.', 'warning'); return; }
+        payload = { ...payload, start_time, days };
+    }
+
+    try {
+        const res  = await fetch(`/api/schedules/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('editScheduleModal'))?.hide();
+            loadSchedules();
+            showAlert('✅ 스케줄이 수정되었습니다.', 'success');
+        } else {
+            showAlert('수정 실패: ' + (data.message || data.error || '알 수 없는 오류'), 'danger');
+        }
+    } catch (e) {
+        showAlert('오류: ' + e.message, 'danger');
+    }
+}
+
+// 편집 모달 요일 버튼 토글 (이벤트 위임)
+document.addEventListener('click', e => {
+    const btn = e.target.closest('.edit-day-btn');
+    if (!btn) return;
+    const isActive = btn.classList.contains('active');
+    btn.classList.toggle('active', !isActive);
+    btn.classList.toggle('btn-primary', !isActive);
+    btn.classList.toggle('btn-outline-secondary', isActive);
+});
+
 // patch_v3b_modal_js

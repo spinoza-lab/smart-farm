@@ -200,6 +200,19 @@ def init_monitoring_system():
             except Exception as _se:
                 print(f"⚠️  IrrigationScheduler 초기화 실패: {_se}")
                 irrigation_scheduler = None
+
+            # ── Fix B: 저장된 모드 복원 (patch_v4e) ──
+            try:
+                _b_cfg  = _load_soil_config()
+                _b_mode = _b_cfg.get('irrigation', {}).get('mode', 'manual')
+                if _b_mode and _b_mode != auto_irrigation.mode:
+                    auto_irrigation.set_mode(_b_mode)
+                    print(f"[Init] 저장된 모드 복원: {_b_mode}")
+                else:
+                    print(f"[Init] 현재 모드 유지: {auto_irrigation.mode}")
+            except Exception as _me:
+                print(f"[Init] 모드 복원 실패: {_me}")
+
         except Exception as e:
             print(f"⚠️  토양 센서 초기화 실패 (센서 미연결?): {e}")
             soil_sensor_manager = None
@@ -746,6 +759,16 @@ def set_irrigation_mode():
                 irrigation_scheduler.stop()
                 print("[Mode] 스케줄러 중지됨")
 
+    # ── Fix A: 모드를 soil_sensors.json 에 영구 저장 ──
+    if ok:
+        try:
+            cfg = _load_soil_config()
+            cfg.setdefault('irrigation', {})['mode'] = mode
+            _save_soil_config(cfg)
+            print(f"[Mode] 모드 '{mode}' 파일에 저장됨")
+        except Exception as _save_err:
+            print(f"[Mode] 설정 저장 실패: {_save_err}")
+
     return jsonify({'success': ok, 'message': msg})
 
 
@@ -1239,14 +1262,102 @@ def save_irrigation_thresholds():
 
 @app.route('/api/schedules/next', methods=['GET'])
 def get_next_schedule():
-    """다음 실행 예정 스케줄 반환."""
-    if not irrigation_scheduler:
-        return jsonify({'success': False, 'message': '스케줄러 초기화 안 됨'})
-    next_s = (irrigation_scheduler.get_next_schedules(limit=1) or [None])[0]
-    if next_s:
-        return jsonify({'success': True, 'next_schedule': next_s})
-    return jsonify({'success': True, 'next_schedule': None, 'message': '예정된 스케줄 없음'})
+    """다음 실행 예정 스케줄 반환 (스케줄러 없어도 파일 직접 계산).  # Fix G – patch_v4g"""
+    import json as _json
+    from datetime import datetime as _dt, timedelta as _td
 
+    def _calc_minutes_until(start_time_str, days):
+        """'HH:MM' + 요일 리스트로 다음 실행까지 분 계산"""
+        now = _dt.now()
+        try:
+            h, m = map(int, start_time_str.split(':'))
+        except Exception:
+            return None
+        best = None
+        for delta_day in range(8):
+            target = now.replace(hour=h, minute=m, second=0, microsecond=0) + _td(days=delta_day)
+            if target <= now:
+                continue
+            dow = target.weekday()   # 0=월 ~ 6=일
+            if days and dow not in days:
+                continue
+            diff_min = int((target - now).total_seconds() // 60)
+            if best is None or diff_min < best:
+                best = diff_min
+        return best
+
+    def _calc_minutes_until_routine(start_date_str, start_time_str, interval_days):
+        """루틴: 다음 실행까지 분 계산"""
+        now = _dt.now()
+        try:
+            h, m = map(int, start_time_str.split(':'))
+            base = _dt.strptime(start_date_str, '%Y-%m-%d').replace(hour=h, minute=m)
+        except Exception:
+            return None
+        if interval_days < 1:
+            interval_days = 1
+        # base 이후로 interval_days 간격의 첫 번째 미래 시각 찾기
+        delta = (now - base).total_seconds()
+        if delta < 0:
+            next_run = base
+        else:
+            cycles = int(delta // (interval_days * 86400)) + 1
+            next_run = base + _td(days=cycles * interval_days)
+        return int((next_run - now).total_seconds() // 60)
+
+    # ── 먼저 스케줄러 시도 ────────────────────────────────────────────
+    global irrigation_scheduler
+    if irrigation_scheduler and irrigation_scheduler._running:
+        try:
+            items = irrigation_scheduler.get_next_schedules(limit=1) or []
+            if items:
+                s = items[0]
+                if 'minutes_until' not in s:  # Fix J – patch_v4h
+                    if not s.get('start_time') and s.get('next_run'):
+                        try:
+                            s['start_time'] = s['next_run'].split(' ')[1][:5]
+                        except Exception:
+                            pass
+                    if s.get('next_run'):
+                        try:
+                            _nrdt = _dt.strptime(s['next_run'], '%Y-%m-%d %H:%M')
+                            s['minutes_until'] = max(int((_nrdt - _dt.now()).total_seconds() // 60), 0)
+                        except Exception:
+                            s['minutes_until'] = _calc_minutes_until(s.get('start_time','00:00'), s.get('days',[])) or 0
+                    elif s.get('start_time'):
+                        s['minutes_until'] = _calc_minutes_until(s['start_time'], s.get('days',[])) or 0
+                return jsonify({'success': True, 'next_schedule': s})
+        except Exception:
+            pass
+
+    # ── 파일 폴백 ─────────────────────────────────────────────────────
+    try:
+        data = _load_schedules()
+        schedules = [s for s in data.get('schedules', []) if s.get('enabled', True)]
+        if not schedules:
+            return jsonify({'success': True, 'next_schedule': None, 'message': '예정된 스케줄 없음'})
+
+        best_s, best_min = None, None
+        for s in schedules:
+            stype = s.get('type', 'schedule')
+            if stype == 'routine':
+                mins = _calc_minutes_until_routine(
+                    s.get('start_date', ''), s.get('start_time', '00:00'),
+                    s.get('interval_days', 1)
+                )
+            else:
+                mins = _calc_minutes_until(s.get('start_time', '00:00'), s.get('days', []))
+            if mins is not None and (best_min is None or mins < best_min):
+                best_s, best_min = s, mins
+
+        if best_s:
+            best_s = dict(best_s)
+            best_s['minutes_until'] = best_min
+            return jsonify({'success': True, 'next_schedule': best_s})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'오류: {e}'}), 500
+
+    return jsonify({'success': True, 'next_schedule': None, 'message': '예정된 스케줄 없음'})
 
 @app.route('/api/schedules/status', methods=['GET'])
 def get_scheduler_status():
@@ -1274,42 +1385,68 @@ def get_schedules():
 
 @app.route('/api/schedules', methods=['POST'])
 def add_schedule():
-    """스케줄 추가"""
+    """스케줄 추가 – schedule / routine 타입 모두 지원 (Fix A – patch_v4f)"""
     try:
         from datetime import datetime as dt
-        body      = request.get_json()
-        zone_id   = int(body.get('zone_id', 0))
-        start_time = body.get('start_time', '')
-        duration  = int(body.get('duration', 300))
-        days      = [int(d) for d in body.get('days', [])]
+        body       = request.get_json(force=True) or {}
+        stype      = body.get('type', 'schedule')   # 'schedule' | 'routine'
+        zone_id    = int(body.get('zone_id', 0))
+        duration   = int(body.get('duration', 300))
 
-        if not zone_id or not start_time:
-            return jsonify({'success': False, 'error': 'zone_id, start_time 필수'}), 400
+        if not zone_id:
+            return jsonify({'success': False, 'error': 'zone_id 필수'}), 400
 
-        # HH:MM 형식 검증
-        try:
-            dt.strptime(start_time, '%H:%M')
-        except ValueError:
-            return jsonify({'success': False, 'error': '시간 형식이 HH:MM이어야 합니다'}), 400
-
-        data = _load_schedules()
+        data      = _load_schedules()
         schedules = data.get('schedules', [])
+        new_id    = max((s.get('id', 0) for s in schedules), default=0) + 1
 
-        new_id = max((s.get('id', 0) for s in schedules), default=0) + 1
-        new_schedule = {
-            'id':         new_id,
-            'zone_id':    zone_id,
-            'start_time': start_time,
-            'duration':   duration,
-            'days':       days,
-            'enabled':    True,
-            'created_at': dt.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
+        if stype == 'routine':
+            # ── 루틴 스케줄 ──
+            start_date    = body.get('start_date', '')
+            start_time    = body.get('start_time', '06:00')
+            interval_days = int(body.get('interval_days', 1))
+            check_moisture= bool(body.get('check_moisture', False))
+            if not start_date or not start_time:
+                return jsonify({'success': False,
+                                'error': 'routine: start_date, start_time 필수'}), 400
+            new_schedule = {
+                'id':            new_id,
+                'type':          'routine',
+                'zone_id':       zone_id,
+                'duration':      duration,
+                'start_date':    start_date,
+                'start_time':    start_time,
+                'interval_days': interval_days,
+                'check_moisture': check_moisture,
+                'enabled':       True,
+                'created_at':    dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+            }
+        else:
+            # ── 주간 스케줄 ──
+            start_time = body.get('start_time', '')
+            days       = [int(d) for d in body.get('days', [])]
+            if not start_time:
+                return jsonify({'success': False,
+                                'error': 'schedule: start_time 필수'}), 400
+            try:
+                dt.strptime(start_time, '%H:%M')
+            except ValueError:
+                return jsonify({'success': False,
+                                'error': '시간 형식이 HH:MM이어야 합니다'}), 400
+            new_schedule = {
+                'id':         new_id,
+                'type':       'schedule',
+                'zone_id':    zone_id,
+                'start_time': start_time,
+                'duration':   duration,
+                'days':       days,
+                'enabled':    True,
+                'created_at': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+            }
 
         schedules.append(new_schedule)
         _save_schedules({'schedules': schedules})
-
-        print(f"✅ 스케줄 추가: #{new_id} 구역{zone_id} {start_time} {duration}s")
+        print(f"✅ 스케줄 추가: #{new_id} 구역{zone_id} type={stype}")
         return jsonify({'success': True, 'schedule': new_schedule,
                         'message': f'스케줄 #{new_id}가 추가되었습니다'})
     except Exception as e:
@@ -1337,29 +1474,52 @@ def delete_schedule(schedule_id):
 @app.route('/api/schedules/<int:schedule_id>', methods=['PATCH'])
 def toggle_schedule(schedule_id):
     """스케줄 활성화/비활성화"""
+
     try:
-        body      = request.get_json()
-        enabled   = bool(body.get('enabled', True))
         data      = _load_schedules()
         schedules = data.get('schedules', [])
-
-        found = False
-        for s in schedules:
-            if s.get('id') == schedule_id:
-                s['enabled'] = enabled
-                found = True
-                break
-
-        if not found:
+        target    = next((s for s in schedules if s.get('id') == schedule_id), None)
+        if target is None:
             return jsonify({'success': False, 'error': f'스케줄 #{schedule_id} 없음'}), 404
-
+        target['enabled'] = not target.get('enabled', True)
         _save_schedules({'schedules': schedules})
-        status = '활성화' if enabled else '비활성화'
-        print(f"🔄 스케줄 #{schedule_id} {status}")
-        return jsonify({'success': True, 'message': f'스케줄 #{schedule_id}가 {status}되었습니다'})
+        state = '활성화' if target['enabled'] else '비활성화'
+        print(f'toggle #{schedule_id} {state}')
+        return jsonify({'success': True, 'enabled': target['enabled'],
+                        'message': f'스케줄 #{schedule_id} {state}'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/schedules/<int:schedule_id>', methods=['PUT'])
+def update_schedule(schedule_id):
+    """스케줄 수정 (PUT)  # Fix M – patch_v4h"""
+    try:
+        body      = request.get_json(force=True) or {}
+        data      = _load_schedules()
+        schedules = data.get('schedules', [])
+        target    = next((s for s in schedules if s.get('id') == schedule_id), None)
+        if not target:
+            return jsonify({'success': False, 'error': f'스케줄 #{schedule_id} 없음'}), 404
+        for field in ('zone_id', 'start_time', 'duration', 'days', 'enabled'):
+            if field in body:
+                val = body[field]
+                if field == 'zone_id':   val = int(val)
+                elif field == 'duration':val = int(val)
+                elif field == 'days':    val = [int(d) for d in val]
+                elif field == 'enabled': val = bool(val)
+                target[field] = val
+        stype = body.get('type', target.get('type', 'schedule'))
+        target['type'] = stype
+        if stype == 'routine':
+            if 'start_date'     in body: target['start_date']     = body['start_date']
+            if 'interval_days'  in body: target['interval_days']  = int(body['interval_days'])
+            if 'check_moisture' in body: target['check_moisture'] = bool(body['check_moisture'])
+        _save_schedules({'schedules': schedules})
+        print(f"✏️  스케줄 #{schedule_id} 수정")
+        return jsonify({'success': True, 'schedule': target,
+                         'message': f'스케줄 #{schedule_id} 수정 완료'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 if __name__ == '__main__':
@@ -1367,7 +1527,7 @@ if __name__ == '__main__':
     print("🌐 스마트 관수 시스템 웹 대시보드 v2")
     print("=" * 60)
     print()
-    
+
     # 모니터링 시스템 초기화
     if init_monitoring_system():
         print()
@@ -1378,61 +1538,9 @@ if __name__ == '__main__':
         print("⏹️  종료: Ctrl+C")
         print("=" * 60)
         print()
-        
-        # Flask 서버 실행
-        socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
+
+        socketio.run(app, host='0.0.0.0', port=5000,
+                     debug=False, use_reloader=False,
+                     allow_unsafe_werkzeug=True)
     else:
         print("❌ 시스템 초기화 실패")
-
-
-
-# ============================================================
-#  스케줄 / 루틴 CRUD API  (patch_v3 추가)
-# ============================================================
-@app.route('/api/schedules', methods=['GET'])
-def get_schedules():
-    return jsonify({'schedules': scheduler.get_all_schedules()})
-
-@app.route('/api/schedules', methods=['POST'])
-def create_schedule():
-    data = request.get_json(force=True) or {}
-    stype = data.get('type', 'schedule')
-    if stype not in ('schedule', 'routine'):
-        return jsonify({'success': False, 'message': 'type 은 schedule 또는 routine'}), 400
-    for f in ['zone_id', 'duration']:
-        if f not in data:
-            return jsonify({'success': False, 'message': f'필수 항목 누락: {f}'}), 400
-    if stype == 'schedule' and ('start_time' not in data or 'days' not in data):
-        return jsonify({'success': False, 'message': 'schedule: start_time, days 필요'}), 400
-    if stype == 'routine' and not all(k in data for k in ('start_date','start_time','interval_days')):
-        return jsonify({'success': False, 'message': 'routine: start_date, start_time, interval_days 필요'}), 400
-    entry = scheduler.add_schedule(data)
-    return jsonify({'success': True, 'schedule': entry}), 201
-
-@app.route('/api/schedules/<int:schedule_id>', methods=['GET'])
-def get_schedule(schedule_id):
-    for s in scheduler.get_all_schedules():
-        if s.get('id') == schedule_id: return jsonify(s)
-    return jsonify({'error': 'not found'}), 404
-
-@app.route('/api/schedules/<int:schedule_id>', methods=['PUT'])
-def update_schedule(schedule_id):
-    data = request.get_json(force=True) or {}
-    ok = scheduler.update_schedule(schedule_id, data)
-    return jsonify({'success': ok, 'message': '수정 완료' if ok else '찾을 수 없음'}), (200 if ok else 404)
-
-@app.route('/api/schedules/<int:schedule_id>', methods=['DELETE'])
-def delete_schedule(schedule_id):
-    ok = scheduler.delete_schedule(schedule_id)
-    return jsonify({'success': ok, 'message': '삭제 완료' if ok else '찾을 수 없음'}), (200 if ok else 404)
-
-@app.route('/api/schedules/<int:schedule_id>/toggle', methods=['POST'])
-def toggle_schedule(schedule_id):
-    result = scheduler.toggle_schedule(schedule_id)
-    return jsonify({'success': bool(result), **result}) if result else (jsonify({'success': False, 'message': '찾을 수 없음'}), 404)
-
-@app.route('/api/schedules/next', methods=['GET'])
-def get_next_schedules():
-    limit = int(request.args.get('limit', 5))
-    return jsonify({'next_schedules': scheduler.get_next_schedules(limit=limit)})
-# ============================================================ /patch_v3
