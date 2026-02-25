@@ -1,8 +1,8 @@
 # 🌱 스마트 관수 시스템 (Smart Irrigation System)
 
 > **Repository**: [spinoza-lab/smart-farm](https://github.com/spinoza-lab/smart-farm)  
-> **최종 업데이트**: 2026-02-24  
-> **버전**: v3.0
+> **최종 업데이트**: 2026-02-25  
+> **버전**: v3.1 (patch_v4h)
 
 라즈베리파이 기반 자동 관수 및 수위 모니터링 시스템
 
@@ -400,7 +400,7 @@ IrrigationScheduler
 | POST | `/api/schedules` | 새 스케줄/루틴 추가 |
 | PUT | `/api/schedules/<id>` | 스케줄 수정 |
 | DELETE | `/api/schedules/<id>` | 스케줄 삭제 |
-| PATCH | `/api/schedules/<id>/toggle` | 활성/비활성 토글 |
+| PATCH | `/api/schedules/<id>` | 스케줄 활성/비활성 토글 (enabled 필드) |
 | GET | `/api/schedules/next` | 다음 실행 예정 스케줄 |
 
 ### 분석 API
@@ -601,3 +601,14 @@ grep -n "precalculate_read_size" hardware/modbus_soil_sensor.py
 ## 📄 라이선스
 
 MIT License
+
+## 📋 변경 이력
+
+### patch_v4h (2026-02-25) 🔧 버그 수정
+- **[Fix-서버시작]** `if __name__ == '__main__':` 블록 유실 복구 → silent exit 해결
+- **[Fix M]** `PUT /api/schedules/<id>` 엔드포인트 추가/복구 → 405 Method Not Allowed 해결
+- **[Fix B]** `toggle_schedule` 빈 바디 복구 → PATCH 500 Internal Server Error 해결
+- **[Fix J]** `/api/schedules/next` 응답에 `start_time`, `minutes_until` 필드 추가
+- **[Fix L2]** `settings.js` 구역 `<td>`에 `typeBadge` 삽입 (schedule/routine 구분 표시)
+- GitHub Issue [#5](https://github.com/spinoza-lab/smart-farm/issues/5) 해결 및 자동 종료
+
