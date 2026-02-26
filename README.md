@@ -1,8 +1,8 @@
 # 🌱 스마트 관수 시스템 (Smart Irrigation System)
 
 > **Repository**: [spinoza-lab/smart-farm](https://github.com/spinoza-lab/smart-farm)  
-> **최종 업데이트**: 2026-02-25  
-> **버전**: v3.1 (patch_v4h)
+> **최종 업데이트**: 2026-02-26  
+> **버전**: v3.2
 
 라즈베리파이 기반 자동 관수 및 수위 모니터링 시스템
 
@@ -82,6 +82,9 @@ smart_farm/
 │       │   ├── settings.js    # 스케줄/루틴 CRUD UI
 │       │   └── irrigation.js  # 관수 제어 클라이언트
 │       └── favicon.svg
+│
+├── tools/                 # 유지보수 도구
+│   └── set_sensor_address.py  # RS485 Modbus 주소 설정 CLI
 │
 ├── logs/                  # 로그 파일
 │   ├── sensors_YYYY-MM-DD.csv  # 탱크 수위 센서 데이터 (10초 주기)
@@ -264,10 +267,12 @@ IrrigationScheduler
 
 ### 토양 수분 센서 (RS-485 Modbus)
 
+- **센서 모델**: CWT-Soil-THC-S (3핀 프로브)
 - **센서 수**: 12개 (구역 1~12)
 - **측정 항목**: 수분(%), 온도(℃), EC(µS/cm)
-- **통신**: Modbus RTU over RS-485
-- **드라이버**: `minimalmodbus 2.1.1` 호환 (`precalculate_read_size` 제거)
+- **통신**: Modbus RTU over RS-485, `4800, N, 8, 1`
+- **기본 슬레이브 주소**: 1 (공장 출하값), 주소 변경 레지스터: `0x07D0`
+- **드라이버**: `minimalmodbus 2.1.1` (공유 시리얼 + `__new__` 초기화 호환)
 - **활용**: 자동 관수 트리거 판단 기준
 
 ---
@@ -318,7 +323,7 @@ IrrigationScheduler
 #### 제어 패널 탭
 - 시스템 상태 배너 (수동/자동 모드 표시)
 - 현재 관수 구역 및 오늘 관수 횟수
-- 관수 진행 프로그레스 바 (잔여 시간 표시)
+- 관수 진행 프로그레스 바 (잔여 시간 표시, 페이지 재진입 시 복원)
 - 긴급 정지 버튼
 - 모드 선택 버튼 **(수동 / 자동)** — 스케줄 모드 제거됨
 
@@ -381,7 +386,7 @@ IrrigationScheduler
 
 | Method | Endpoint | 설명 |
 |--------|----------|------|
-| GET | `/api/irrigation/status` | 관수 전체 상태 (모드, 수분, 이력) |
+| GET | `/api/irrigation/status` | 관수 전체 상태 (모드, 수분, 이력, irr_elapsed/irr_total) |
 | POST | `/api/irrigation/mode` | 모드 변경 `{mode: auto\|manual}` |
 | POST | `/api/irrigation/start` | 관수 시작 `{zone_id, duration}` |
 | POST | `/api/irrigation/stop` | 긴급 정지 |
@@ -398,10 +403,10 @@ IrrigationScheduler
 |--------|----------|------|
 | GET | `/api/schedules` | 전체 스케줄/루틴 목록 |
 | POST | `/api/schedules` | 새 스케줄/루틴 추가 |
-| PUT | `/api/schedules/<id>` | 스케줄 수정 |
+| PUT | `/api/schedules/<id>` | 스케줄 수정 (zone_id, start_time, duration, days, enabled) |
 | DELETE | `/api/schedules/<id>` | 스케줄 삭제 |
 | PATCH | `/api/schedules/<id>` | 스케줄 활성/비활성 토글 (enabled 필드) |
-| GET | `/api/schedules/next` | 다음 실행 예정 스케줄 |
+| GET | `/api/schedules/next` | 다음 실행 예정 스케줄 (next_run, start_time, minutes_until 포함) |
 
 ### 분석 API
 
@@ -497,6 +502,24 @@ IrrigationScheduler
   - ✅ **minimalmodbus 2.1.1 호환 수정** (`precalculate_read_size` 제거)
   - ✅ **schedules.json `type` 필드 마이그레이션**
   - ✅ **대시보드 관수 상태 카드 추가** (현재 모드, 다음 스케줄 표시)
+- **2026-02-25 (v3.1 / patch_v4h)** `75027f2` `b177097`:
+  - ✅ **[Fix-서버시작]** `if __name__ == '__main__':` 블록 유실 복구 → silent exit 해결
+  - ✅ **[Fix M]** `PUT /api/schedules/<id>` 엔드포인트 복구 → 405 오류 해결
+  - ✅ **[Fix B]** `toggle_schedule` 빈 바디 복구 → PATCH 500 오류 해결
+  - ✅ **[Fix J]** `/api/schedules/next` 응답에 `start_time`, `minutes_until` 필드 추가
+  - ✅ **[Fix L2]** `settings.js` 구역 `<td>`에 typeBadge 삽입 (schedule/routine 구분 표시)
+  - ✅ GitHub Issue [#5](https://github.com/spinoza-lab/smart-farm/issues/5) 해결 및 자동 종료
+- **2026-02-26 (v3.2)** `94e3306` `c1feebf`:
+  - ✅ **[Fix S]** `SoilSensorManager` zones 2~12 minimalmodbus 2.x 필수 속성 누락 수정
+    - 공유 시리얼 방식(`__new__`) 초기화 시 `precalculate_read_size` 등 4개 속성 미설정
+    - 수정 전: zones 2~12 `'Instrument' object has no attribute precalculate_read_size'` 오류
+    - 수정 후: 전 구역 동일하게 `No communication` (하드웨어 미연결) 상태로 통일
+  - ✅ **[검증]** Fix A(루틴 저장), Fix C/D(진행바 `irr_elapsed` 실시간 증가) 완료 확인
+  - ✅ GitHub Issue [#4](https://github.com/spinoza-lab/smart-farm/issues/4) 검증 완료 후 종료
+  - ✅ **`tools/set_sensor_address.py`** 신규 추가
+    - CWT-Soil-THC-S RS485 Modbus 주소 설정 전용 CLI 도구
+    - 대화형 모드 / `--scan` / `--set` 3가지 사용 방법 지원
+    - CRC16 검증 포함 FC03(읽기) / FC06(쓰기) 구현, DE/RE GPIO 핀 제어
 
 ---
 
@@ -513,6 +536,7 @@ IrrigationScheduler
 - [x] Stage 6 — systemd 자동 시작 + 로그 관리
 - [x] Stage 7 — 데이터 분석 페이지 (analytics.html, Chart.js 줌/팬)
 - [x] Stage 7.5 — 모드 단순화 + 루틴 스케줄러 + 분 단위 UI (v3.0)
+- [x] Stage 7.6 — API 버그 수정 + 센서 드라이버 안정화 + 유지보수 도구 추가 (v3.1~v3.2)
 
 ### ⏳ 예정된 Stage
 
@@ -561,6 +585,18 @@ python3 -c "import minimalmodbus; print(minimalmodbus.__version__)"
 # 2.1.1 이상 확인
 ```
 
+### RS-485 센서 Modbus 주소 설정
+```bash
+# 센서 1개씩 연결 후 대화형 주소 설정 (공장 기본 주소: 1)
+python3 tools/set_sensor_address.py
+
+# 버스 스캔 (응답하는 주소 확인)
+python3 tools/set_sensor_address.py --scan
+
+# 주소 직접 변경 (예: 주소1 → 구역3)
+python3 tools/set_sensor_address.py --set 1 3
+```
+
 ### IrrigationScheduler 초기화 실패
 ```bash
 grep 'IrrigationScheduler' logs/web.log | tail -5
@@ -587,9 +623,9 @@ API 저장값: 초 단위 (×60 자동 변환)
 
 ### minimalmodbus `precalculate_read_size` 오류
 ```bash
-# modbus_soil_sensor.py 확인
+# zones 2~12 속성 누락 여부 확인
 grep -n "precalculate_read_size" hardware/modbus_soil_sensor.py
-# 해당 라인이 있으면 hasattr 조건을 not hasattr로 변경 또는 제거
+# SoilSensorManager._init_sensors() 공유 시리얼 블록에 4개 속성 설정 확인
 ```
 
 ---
@@ -601,14 +637,3 @@ grep -n "precalculate_read_size" hardware/modbus_soil_sensor.py
 ## 📄 라이선스
 
 MIT License
-
-## 📋 변경 이력
-
-### patch_v4h (2026-02-25) 🔧 버그 수정
-- **[Fix-서버시작]** `if __name__ == '__main__':` 블록 유실 복구 → silent exit 해결
-- **[Fix M]** `PUT /api/schedules/<id>` 엔드포인트 추가/복구 → 405 Method Not Allowed 해결
-- **[Fix B]** `toggle_schedule` 빈 바디 복구 → PATCH 500 Internal Server Error 해결
-- **[Fix J]** `/api/schedules/next` 응답에 `start_time`, `minutes_until` 필드 추가
-- **[Fix L2]** `settings.js` 구역 `<td>`에 `typeBadge` 삽입 (schedule/routine 구분 표시)
-- GitHub Issue [#5](https://github.com/spinoza-lab/smart-farm/issues/5) 해결 및 자동 종료
-
