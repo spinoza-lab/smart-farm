@@ -228,6 +228,11 @@ class SoilSensorManager:
                     sensor.instrument.mode    = minimalmodbus.MODE_RTU
                     sensor.instrument.debug   = False
                     sensor.instrument.close_port_after_each_call = False
+                    # ── Fix S: 누락된 minimalmodbus 2.x 필수 속성 추가 ──
+                    sensor.instrument.precalculate_read_size = True
+                    sensor.instrument.clear_buffers_before_each_transaction = True
+                    sensor.instrument.handle_local_echo = False
+                    sensor.instrument._print_all_errors = False
 
                 self.sensors[zone_id] = sensor
                 print(f"  ✓ 구역 {zone_id:2d} 센서 등록 (Modbus 주소: {address})")
