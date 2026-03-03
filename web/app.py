@@ -812,8 +812,15 @@ def stop_irrigation():
         if relay_controller:
             relay_controller.emergency_stop()
         if auto_irrigation:
-            auto_irrigation.is_irrigating = False
-            auto_irrigation.current_zone  = None
+            # stop_irrigation() 메서드로 _stop_requested 플래그 설정
+            # → irrigate_zone 1초 루프가 다음 tick에 감지하여 중단
+            stop_fn = getattr(auto_irrigation, "stop_irrigation", None)
+            if callable(stop_fn):
+                stop_fn()
+            else:
+                # fallback (구버전 호환)
+                auto_irrigation.is_irrigating = False
+                auto_irrigation.current_zone  = None
         return jsonify({'success': True, 'message': '관수 긴급 정지 완료'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1531,6 +1538,58 @@ def update_schedule(schedule_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+
+# ══════════════════════════════════════════════════════
+#  Stage 8 알림 설정 API
+# ══════════════════════════════════════════════════════
+import copy as _copy
+
+@app.route('/api/notifications/status', methods=['GET'])
+def get_notification_status():
+    """봇 연결 상태 조회"""
+    global telegram_notifier
+    if telegram_notifier is None:
+        return jsonify({"connected": False, "polling": False, "is_muted": False})
+    return jsonify({"connected": True, **telegram_notifier.get_status()})
+
+@app.route('/api/notifications/config', methods=['GET'])
+def get_notification_config():
+    """알림 설정 전체 조회"""
+    import json as _json
+    try:
+        with open("/home/pi/smart_farm/config/notifications.json", encoding="utf-8") as f:
+            return jsonify(_json.load(f))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/notifications/config', methods=['POST'])
+def save_notification_config():
+    """알림 설정 저장"""
+    try:
+        data = request.get_json()
+        with open("/home/pi/smart_farm/config/notifications.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return jsonify({"success": True, "message": "알림 설정 저장 완료"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/notifications/test', methods=['POST'])
+def send_notification_test():
+    """테스트 메시지 전송"""
+    global telegram_notifier
+    if telegram_notifier is None:
+        return jsonify({"success": False, "message": "텔레그램 봇이 초기화되지 않았습니다"})
+    try:
+        from datetime import datetime as _dt
+        telegram_notifier.send_menu(
+            f"🧪 <b>테스트 메시지</b>\n"
+            f"⏰ {_dt.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"✅ 알림 설정이 정상 작동 중입니다!"
+        )
+        return jsonify({"success": True, "message": "테스트 메시지 전송 완료"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
     print("=" * 60)

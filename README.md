@@ -236,20 +236,23 @@ VS Code에서 `Remote - SSH` 익스텐션 설치 후 `smart-farm-pi` 로 접속,
 | 수위 과잉 | ⚠️ **탱크1 수위 과잉!** / 📊 현재: 95.0% (최대: 90%) |
 | 센서 오류 | 🔴 **센서 오류** / 채널0 비정상 전압 |
 
-### 명령어 봇
+### 인라인 버튼 메뉴 (v3.4)
 
-텔레그램에서 봇에게 명령어를 보내면 원격으로 시스템을 제어할 수 있습니다.
+텍스트 명령어 대신 **인라인 키보드 버튼**으로 시스템을 제어합니다.
 
-| 명령어 | 설명 |
+| 버튼 / 명령어 | 설명 |
 |--------|------|
-| `/help` | 명령어 목록 조회 |
-| `/status` | 현재 모드·관수 상태·스케줄러 상태 |
-| `/history` | 오늘 관수 이력 (최근 5건) |
-| `/schedules` | 등록된 스케줄/루틴 목록 |
-| `/irrigate <구역> <초>` | 즉시 관수 실행 (예: `/irrigate 1 30`) |
-| `/stop` | 현재 관수 즉시 중단 |
-| `/mute <분>` | 알림 무음 (예: `/mute 120`) |
-| `/unmute` | 무음 해제 |
+| `/start`, `/menu` | 메인 메뉴 열기 |
+| `/help` | 도움말 |
+| 📊 **상태** | 현재 모드·관수 상태·스케줄러 조회 |
+| 📜 **이력** | 오늘 관수 이력 (최근 5건) |
+| 🗓 **스케줄** | 등록된 스케줄/루틴 목록 |
+| 💧 **관수 시작** | 구역 선택(1~12) → 시간 선택 → 즉시 실행 |
+| 🛑 **관수 중단** | 현재 관수 즉시 중단 (≤1초 반응) |
+| 🔇 **1시간 무음** | 알림 1시간 무음 설정 |
+
+> **관수 흐름**: 💧 관수 시작 → 구역 1~12 선택 → 30초/1분/2분/5분/10분/20분 선택  
+> → 즉시 "💧 관수 요청 접수" 응답 후 백그라운드 실행, 완료 시 ✅ 또는 🛑 알림 전송
 
 ### 알림 설정 (`config/notifications.json`)
 
@@ -622,6 +625,24 @@ IrrigationScheduler
   - ✅ **[Fix S]** `SoilSensorManager` zones 2~12 minimalmodbus 2.x 필수 속성 누락 수정
   - ✅ **`tools/set_sensor_address.py`** 신규 추가 (RS485 Modbus 주소 설정 CLI)
   - ✅ GitHub Issue [#4](https://github.com/spinoza-lab/smart-farm/issues/4) 해결
+- **2026-03-03 (v3.4)**:
+  - ✅ **[Stage 8 – Telegram 인라인 UI]** 텍스트 명령어 → 인라인 키보드 메뉴로 전면 개편
+    - `MAIN_MENU` (상태·이력·스케줄·관수 4행), `ZONE_MENU` (12구역 그리드), `duration_menu` (30초/1분/2/5/10/20분) 추가
+    - `edit_message()` 메서드 추가 — 새 메시지 발송 대신 기존 메시지를 수정해 채팅창 노이즈 최소화
+    - `_poll_loop`이 `callback_query`와 텍스트(`/start`, `/menu`, `/help`) 동시 처리
+  - ✅ **[Bug-T1]** 관수 중단 시 `❌ 관수 실패` + `🛑 중단됨` 이중 메시지 버그 수정
+    - `notify_irrigation_done(success=False)` → `🛑 관수 중단됨 – 구역N ⏱ N초 경과` 단일 메시지
+    - `_run()` 핸들러 중복 전송 억제
+  - ✅ **[Bug-T2]** 관수 버튼 클릭 시 폴링 스레드 전체 블로킹 버그 수정
+    - `_handle_irrigate_zone` — 즉시 "💧 관수 요청 접수" 응답 후 백그라운드 daemon 스레드 실행
+    - 관수 진행 중에도 상태 조회·중단 버튼 즉시 응답
+  - ✅ **[Bug-T3]** 웹 UI `/api/irrigation/stop` 이 `_stop_requested` 플래그 미설정 → 중단 지연 버그 수정
+    - `app.py` stop 라우트에 `auto_irrigation.stop_irrigation()` 호출 추가
+    - 웹 UI 긴급 정지 1초 이내 즉시 반영
+  - ✅ **[auto_controller]** `irrigate_zone()` 단일 `time.sleep` → 1초 루프 + `_stop_requested` 플래그 체크
+    - `stop_irrigation()` 메서드 신규 추가
+    - `actual_duration` 실제 경과 시간 기록, 결과 dict에 `duration`·`success` 포함
+
 - **2026-03-03 (v3.3)** `6005970` `ec64bdf` `b3185e8`:
   - ✅ **[Bug-M1]** 서버 시작 시 스케줄러 미시작 수정 (모드 기본값 `manual` → `auto`)
   - ✅ **[Bug-M2]** `auto` 모드 선택 시 `scheduler.stop()` 즉시 호출되는 버그 수정

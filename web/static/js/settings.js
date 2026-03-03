@@ -1087,3 +1087,151 @@ document.addEventListener('click', e => {
 });
 
 // patch_v3b_modal_js
+
+/* ════════════════════════════════════════════════════
+   Stage 8 – 알림 설정 탭 JS
+   ════════════════════════════════════════════════════ */
+
+// 페이지 로드 시 알림 설정 탭이 활성화되면 자동 로드
+document.addEventListener('DOMContentLoaded', () => {
+    const alertsTab = document.querySelector('button[data-bs-target="#alerts"]');
+    if (alertsTab) {
+        alertsTab.addEventListener('shown.bs.tab', () => {
+            loadBotStatus();
+            loadAlertConfig();
+        });
+    }
+});
+
+function loadBotStatus() {
+    fetch('/api/notifications/status')
+        .then(r => r.json())
+        .then(d => {
+            const badge = document.getElementById('botStatusBadge');
+            const muteInfo = document.getElementById('botMuteInfo');
+            if (!badge) return;
+            if (d.connected && d.polling) {
+                badge.className = 'badge bg-success fs-6 px-3 py-2';
+                badge.textContent = '✅ 연결됨 (폴링 중)';
+            } else if (d.connected) {
+                badge.className = 'badge bg-warning fs-6 px-3 py-2';
+                badge.textContent = '⚠️ 연결됨 (폴링 중지)';
+            } else {
+                badge.className = 'badge bg-danger fs-6 px-3 py-2';
+                badge.textContent = '❌ 미연결';
+            }
+            if (d.is_muted && d.mute_until) {
+                const until = new Date(d.mute_until * 1000).toLocaleTimeString('ko-KR');
+                muteInfo.textContent = `🔇 무음 중 (${until}까지)`;
+            } else {
+                muteInfo.textContent = '';
+            }
+        })
+        .catch(() => {
+            const badge = document.getElementById('botStatusBadge');
+            if (badge) { badge.className = 'badge bg-secondary fs-6 px-3 py-2'; badge.textContent = '확인 실패'; }
+        });
+}
+
+function loadAlertConfig() {
+    fetch('/api/notifications/config')
+        .then(r => r.json())
+        .then(cfg => {
+            const alerts = cfg.alerts || {};
+            const map = {
+                'alert_server_start':      'server_start',
+                'alert_irrigation_start':  'irrigation_start',
+                'alert_irrigation_done':   'irrigation_done',
+                'alert_water_level_low':   'water_level_low',
+                'alert_water_level_high':  'water_level_high',
+                'alert_sensor_error':      'sensor_error',
+            };
+            Object.entries(map).forEach(([elId, key]) => {
+                const el = document.getElementById(elId);
+                if (el) el.checked = alerts[key] !== false;
+            });
+            // 임계값
+            const th = cfg.thresholds || {};
+            setSlider('tank1Min', 'tank1MinVal', th.tank1_min ?? 20);
+            setSlider('tank1Max', 'tank1MaxVal', th.tank1_max ?? 90);
+            setSlider('tank2Min', 'tank2MinVal', th.tank2_min ?? 20);
+            setSlider('tank2Max', 'tank2MaxVal', th.tank2_max ?? 90);
+        });
+}
+
+function setSlider(sliderId, labelId, value) {
+    const sl = document.getElementById(sliderId);
+    const lb = document.getElementById(labelId);
+    if (sl) sl.value = value;
+    if (lb) lb.textContent = value;
+}
+
+function saveAlertConfig() {
+    fetch('/api/notifications/config')
+        .then(r => r.json())
+        .then(cfg => {
+            const map = {
+                'alert_server_start':      'server_start',
+                'alert_irrigation_start':  'irrigation_start',
+                'alert_irrigation_done':   'irrigation_done',
+                'alert_water_level_low':   'water_level_low',
+                'alert_water_level_high':  'water_level_high',
+                'alert_sensor_error':      'sensor_error',
+            };
+            cfg.alerts = cfg.alerts || {};
+            Object.entries(map).forEach(([elId, key]) => {
+                const el = document.getElementById(elId);
+                if (el) cfg.alerts[key] = el.checked;
+            });
+            return fetch('/api/notifications/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(cfg)
+            });
+        })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) showMsg('alertSaveMsg');
+        });
+}
+
+function saveThresholdConfig() {
+    fetch('/api/notifications/config')
+        .then(r => r.json())
+        .then(cfg => {
+            cfg.thresholds = {
+                tank1_min: parseInt(document.getElementById('tank1Min')?.value || 20),
+                tank1_max: parseInt(document.getElementById('tank1Max')?.value || 90),
+                tank2_min: parseInt(document.getElementById('tank2Min')?.value || 20),
+                tank2_max: parseInt(document.getElementById('tank2Max')?.value || 90),
+            };
+            return fetch('/api/notifications/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(cfg)
+            });
+        })
+        .then(r => r.json())
+        .then(d => { if (d.success) showMsg('threshSaveMsg'); });
+}
+
+function sendTestMessage() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 전송 중...';
+    fetch('/api/notifications/test', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-send"></i> 테스트 메시지 전송';
+            alert(d.success ? '✅ 테스트 메시지 전송 완료!\n텔레그램을 확인하세요.' : '❌ 전송 실패: ' + (d.message || d.error));
+        })
+        .catch(() => { btn.disabled = false; btn.innerHTML = '<i class="bi bi-send"></i> 테스트 메시지 전송'; });
+}
+
+function showMsg(elId, duration = 3000) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.classList.remove('d-none');
+    setTimeout(() => el.classList.add('d-none'), duration);
+}

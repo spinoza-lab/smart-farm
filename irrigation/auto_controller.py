@@ -33,8 +33,8 @@ class AutoIrrigationController:
     CSV_PATH    = '/home/pi/smart_farm/logs/irrigation_history.csv'
 
     def __init__(self, sensor_manager=None, relay_controller=None, config_path=None):
-        self.config_path     = config_path or self.CONFIG_PATH
-        self.sensor_manager  = sensor_manager
+        self.config_path      = config_path or self.CONFIG_PATH
+        self.sensor_manager   = sensor_manager
         self.relay_controller = relay_controller
 
         # 상태
@@ -43,6 +43,9 @@ class AutoIrrigationController:
         self.is_irrigating   = False
         self.current_zone    = None
         self.monitor_thread  = None
+
+        # 관수 중단 플래그 (stop_irrigation() 호출 시 True)
+        self._stop_requested = False
 
         # 설정
         self.config          = {}
@@ -54,7 +57,7 @@ class AutoIrrigationController:
         self.last_sensor_data   = {}
         self.alert_callback     = None
 
-        # Fix C – patch_v4f: 관수 진행 시간 추적
+        # 관수 진행 시간 추적
         self._irr_start_time = None   # datetime
         self._irr_duration   = 0      # 초
 
@@ -84,7 +87,7 @@ class AutoIrrigationController:
             print(f"✅ 관수 설정 로드 완료")
         except Exception as e:
             print(f"❌ 설정 로드 실패: {e}")
-            self.irrigation_cfg  = {
+            self.irrigation_cfg = {
                 'min_tank_level': 20.0,
                 'irrigation_duration': 300,
                 'zone_interval': 10,
@@ -109,14 +112,14 @@ class AutoIrrigationController:
         if mode == 'auto':
             if not self.is_running:
                 self.start_monitor()
-            # 스케줄러 시작
-            if hasattr(self, '_scheduler') and self._scheduler                     and not self._scheduler._running:
+            if hasattr(self, '_scheduler') and self._scheduler \
+                    and not self._scheduler._running:
                 self._scheduler.start()
         elif mode == 'manual':
             if self.is_running:
                 self.stop_monitor()
-            # 스케줄러 정지
-            if hasattr(self, '_scheduler') and self._scheduler                     and self._scheduler._running:
+            if hasattr(self, '_scheduler') and self._scheduler \
+                    and self._scheduler._running:
                 self._scheduler.stop()
 
         return True, f"모드가 {mode}로 변경되었습니다"
@@ -149,7 +152,6 @@ class AutoIrrigationController:
             except Exception as e:
                 print(f"❌ 모니터 루프 오류: {e}")
 
-            # 체크 주기 대기 (1초씩 끊어서 종료 응답성 향상)
             for _ in range(check_interval):
                 if not self.is_running:
                     break
@@ -164,7 +166,6 @@ class AutoIrrigationController:
         print(f"🌱 자동 관수 체크: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*50}")
 
-        # 1. 센서 데이터 읽기
         if self.sensor_manager:
             sensor_data = self.sensor_manager.read_all_zones()
         else:
@@ -172,14 +173,12 @@ class AutoIrrigationController:
 
         self.last_sensor_data = sensor_data
 
-        # 2. 탱크 수위 확인
         tank_ok, tank_msg = self._check_tank_level()
         if not tank_ok:
             print(f"⚠️  관수 보류: {tank_msg}")
             self._log(f"관수 보류 - {tank_msg}")
             return
 
-        # 3. 수분 부족 구역 감지
         dry_zones = []
         for zone_id, data in sorted(sensor_data.items()):
             if not data.get('valid'):
@@ -195,7 +194,6 @@ class AutoIrrigationController:
             else:
                 print(f"  구역 {zone_id:2d}: ✅ 수분 {moisture:.1f}% (양호)")
 
-        # 4. 관수 실행
         if not dry_zones:
             print("✅ 모든 구역 수분 충분 - 관수 불필요")
             return
@@ -205,56 +203,79 @@ class AutoIrrigationController:
             if not self.is_running:
                 break
             self.irrigate_zone(zone_id)
-            # 구역 간 대기
             interval = self.irrigation_cfg.get('zone_interval', 10)
             if zone_id != dry_zones[-1]:
                 print(f"  ⏳ 다음 구역 대기 {interval}초...")
                 time.sleep(interval)
 
     # ──────────────────────────────────────
+    # 관수 중단 (외부 호출용)
+    # ──────────────────────────────────────
+    def stop_irrigation(self):
+        """현재 진행 중인 관수를 중단. irrigate_zone 루프에서 감지."""
+        if self.is_irrigating:
+            self._stop_requested = True
+            print("🛑 관수 중단 요청 수신 – 다음 초 단위에서 중단됩니다")
+        else:
+            print("💤 stop_irrigation() 호출됐으나 현재 관수 중이 아님")
+
+    # ──────────────────────────────────────
     # 단일 구역 관수
     # ──────────────────────────────────────
     def start_zone_irrigation(self, zone_id, duration=None, trigger="scheduler"):
-        """스케줄러 호출용 래퍼 – irrigate_zone() 위임"""
+        """스케줄러/텔레그램 호출용 래퍼 – irrigate_zone() 위임"""
         return self.irrigate_zone(zone_id=zone_id, duration=duration, trigger=trigger)
 
     def irrigate_zone(self, zone_id, duration=None, trigger=None):
-        """단일 구역 관수 실행"""
+        """단일 구역 관수 실행 (중단 플래그 지원)"""
         if self.is_irrigating:
             return False, f"이미 관수 중 (구역 {self.current_zone})"
 
         duration = duration or self.irrigation_cfg.get('irrigation_duration', 300)
 
         print(f"\n💧 구역 {zone_id} 관수 시작 ({duration}초)")
-        # Stage 8: 관수 시작 알림
+
+        # 관수 시작 텔레그램 알림
         try:
-            import sys as _s; _am = _s.modules.get("__main__") or _s.modules.get("web.app") or _s.modules.get("app")
+            import sys as _s
+            _am = (_s.modules.get("__main__") or
+                   _s.modules.get("web.app") or
+                   _s.modules.get("app"))
             _tn = getattr(_am, "telegram_notifier", None)
-            if _tn: _tn.notify_irrigation_start(zone_id, duration, trigger or self.mode)
-        except Exception: pass
+            if _tn:
+                _tn.notify_irrigation_start(zone_id, duration, trigger or self.mode)
+        except Exception:
+            pass
+
         self.is_irrigating   = True
         self.current_zone    = zone_id
-        self._irr_start_time = datetime.now()   # Fix C
-        self._irr_duration   = duration          # Fix C
+        self._stop_requested = False          # 플래그 초기화
+        self._irr_start_time = datetime.now()
+        self._irr_duration   = duration
         start_time           = self._irr_start_time
+        aborted              = False
 
         try:
             if self.relay_controller:
-                # 실제 릴레이 제어
                 self.relay_controller.pump_on()
                 time.sleep(0.5)
                 self.relay_controller.zone_on(zone_id)
             else:
                 print(f"  [시뮬레이션] 펌프 ON, 구역 {zone_id} 밸브 ON")
 
-            # 관수 진행
+            # ─── 관수 진행 (1초 단위 루프 – 중단 요청 감지) ───────
             print(f"  ⏳ 관수 중... ({duration}초)")
-            time.sleep(duration)
+            for elapsed in range(duration):
+                if self._stop_requested:
+                    print(f"  🛑 관수 중단 감지 ({elapsed}초 경과)")
+                    aborted = True
+                    break
+                time.sleep(1)
 
         except Exception as e:
             print(f"  ❌ 관수 오류: {e}")
         finally:
-            # 반드시 OFF
+            # 반드시 하드웨어 OFF
             if self.relay_controller:
                 self.relay_controller.zone_off(zone_id)
                 time.sleep(0.3)
@@ -264,47 +285,63 @@ class AutoIrrigationController:
 
             self.is_irrigating   = False
             self.current_zone    = None
-            self._irr_start_time = None   # Fix C
-            self._irr_duration   = 0      # Fix C
+            self._stop_requested = False
+            self._irr_start_time = None
+            self._irr_duration   = 0
 
-        # Stage 8: 관수 완료 알림
+        # 실제 관수 시간 계산
+        actual_duration = int((datetime.now() - start_time).total_seconds())
+
+        # 완료 텔레그램 알림
         try:
-            import sys as _s; _am = _s.modules.get("__main__") or _s.modules.get("web.app") or _s.modules.get("app")
+            import sys as _s
+            _am = (_s.modules.get("__main__") or
+                   _s.modules.get("web.app") or
+                   _s.modules.get("app"))
             _tn = getattr(_am, "telegram_notifier", None)
-            if _tn: _tn.notify_irrigation_done(zone_id, duration, trigger or self.mode, True)
-        except Exception: pass
+            if _tn:
+                _tn.notify_irrigation_done(
+                    zone_id, actual_duration,
+                    trigger or self.mode,
+                    success=not aborted
+                )
+        except Exception:
+            pass
 
         # 이력 기록
-        record = {
-            'zone_id':    zone_id,
-            'start_time': start_time.strftime('%Y-%m-%d %H:%M:%S'),
-            'duration':   duration,
-            'trigger':    trigger if trigger is not None else self.mode
-        }
-        # 관수 전 수분 데이터 추가
         moisture_before = ''
         if zone_id in self.last_sensor_data:
             m = self.last_sensor_data[zone_id]
             if isinstance(m, dict):
                 moisture_before = m.get('moisture', '')
-        record['moisture_before'] = moisture_before
-        record['success'] = True
 
+        record = {
+            'zone_id':        zone_id,
+            'start_time':     start_time.strftime('%Y-%m-%d %H:%M:%S'),
+            'duration':       actual_duration,
+            'trigger':        trigger if trigger is not None else self.mode,
+            'moisture_before': moisture_before,
+            'success':        not aborted
+        }
         self.irrigation_history.append(record)
-        self._save_to_csv(record)          # CSV 영구 저장
+        self._save_to_csv(record)
         if len(self.irrigation_history) > 200:
             self.irrigation_history = self.irrigation_history[-200:]
 
-        self._log(f"구역 {zone_id} 관수 완료 ({duration}초)")
-        print(f"  ✅ 구역 {zone_id} 관수 완료")
-        return True, f"구역 {zone_id} 관수 완료"
+        if aborted:
+            self._log(f"구역 {zone_id} 관수 중단 ({actual_duration}초 경과)")
+            print(f"  🛑 구역 {zone_id} 관수 중단 완료")
+            return False, f"구역 {zone_id} 관수 중단됨 ({actual_duration}초)"
+        else:
+            self._log(f"구역 {zone_id} 관수 완료 ({actual_duration}초)")
+            print(f"  ✅ 구역 {zone_id} 관수 완료")
+            return True, f"구역 {zone_id} 관수 완료"
 
     # ──────────────────────────────────────
     # 탱크 수위 확인
     # ──────────────────────────────────────
     def _check_tank_level(self):
         min_level = self.irrigation_cfg.get('min_tank_level', 20.0)
-        # SensorMonitor에서 최신 수위 가져오기 (외부 주입 방식)
         if hasattr(self, 'get_tank_level_callback') and self.get_tank_level_callback:
             level = self.get_tank_level_callback()
             if level is not None and level < min_level:
@@ -314,14 +351,13 @@ class AutoIrrigationController:
     # ──────────────────────────────────────
     # 상태 조회
     # ──────────────────────────────────────
-
     def attach_scheduler(self, scheduler):
         """스케줄러 주입 (순환 참조 방지용 지연 주입)"""
         self._scheduler = scheduler
         if self.mode == 'auto' and not scheduler._running:
             scheduler.start()
+
     def get_status(self):
-        # Fix C – patch_v4f: 관수 경과/남은 시간 계산
         irr_elapsed = 0
         irr_total   = self._irr_duration or 0
         if self.is_irrigating and self._irr_start_time:
@@ -333,6 +369,7 @@ class AutoIrrigationController:
             'current_zone':     self.current_zone,
             'irr_elapsed':      irr_elapsed,
             'irr_total':        irr_total,
+            'stop_requested':   self._stop_requested,
             'zone_thresholds':  self.zone_thresholds,
             'last_sensor_data': self.last_sensor_data,
             'recent_history':   self.irrigation_history[-10:]
@@ -345,16 +382,15 @@ class AutoIrrigationController:
     # 로그 & 시뮬레이션
     # ──────────────────────────────────────
     def _init_irrigation_csv(self):
-        """관수 이력 CSV 파일 초기화 (헤더 없으면 생성)"""
         import csv
         if not os.path.exists(self.CSV_PATH) or os.path.getsize(self.CSV_PATH) == 0:
             with open(self.CSV_PATH, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                writer.writerow(['timestamp', 'zone_id', 'duration_sec', 'trigger', 'moisture_before', 'success'])
+                writer.writerow(['timestamp', 'zone_id', 'duration_sec',
+                                 'trigger', 'moisture_before', 'success'])
             print(f"✅ 관수 이력 CSV 생성: {self.CSV_PATH}")
 
     def _load_irrigation_history(self):
-        """CSV에서 최근 200개 이력 로드 (재시작해도 유지)"""
         import csv
         if not os.path.exists(self.CSV_PATH):
             return
@@ -369,7 +405,6 @@ class AutoIrrigationController:
             print(f"⚠️  관수 이력 로드 실패: {e}")
 
     def _save_to_csv(self, record):
-        """관수 이력 1건을 CSV에 추가"""
         import csv
         try:
             with open(self.CSV_PATH, 'a', newline='', encoding='utf-8') as f:
@@ -396,7 +431,6 @@ class AutoIrrigationController:
         print(f"📝 {line.strip()}")
 
     def _simulate_sensor_data(self):
-        """센서 없을 때 시뮬레이션 데이터"""
         import random
         data = {}
         for zone_id in range(1, 13):
@@ -421,11 +455,9 @@ if __name__ == '__main__':
 
     ctrl = AutoIrrigationController()
 
-    # 상태 출력
     status = ctrl.get_status()
     print(f"\n현재 모드: {status['mode']}")
     print(f"임계값 설정: {status['zone_thresholds']}")
 
-    # 시뮬레이션 데이터로 1회 체크
     print("\n🧪 수동 관수 체크 실행 (시뮬레이션)...")
     ctrl._auto_check_and_irrigate()

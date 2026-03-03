@@ -724,13 +724,191 @@
                 </div>
             </div>
 
-            <!-- 알림 설정 탭 -->
+            <!-- 알림 설정 탭 (Stage 8 완성) -->
             <div class="tab-pane fade" id="alerts" role="tabpanel">
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle"></i> 
-                    <strong>준비 중:</strong> 알림 설정 기능은 Stage 6에서 구현 예정입니다.
-                </div>
-            </div>
+                <div class="row">
+
+                    <!-- ① 봇 연결 상태 -->
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-telegram"></i> 텔레그램 봇 상태
+                            </div>
+                            <div class="card-body text-center">
+                                <div class="mb-3">
+                                    <span id="botStatusBadge" class="badge bg-secondary fs-6 px-3 py-2">
+                                        확인 중...
+                                    </span>
+                                </div>
+                                <div class="mb-2 text-muted small" id="botMuteInfo"></div>
+                                <button class="btn btn-primary btn-lg w-100 mb-2"
+                                        onclick="sendTestMessage()">
+                                    <i class="bi bi-send"></i> 테스트 메시지 전송
+                                </button>
+                                <button class="btn btn-outline-secondary w-100"
+                                        onclick="loadBotStatus()">
+                                    <i class="bi bi-arrow-clockwise"></i> 상태 새로고침
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 봇 명령 안내 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-grid-3x2-gap"></i> 텔레그램 버튼 메뉴
+                            </div>
+                            <div class="card-body p-2">
+                                <table class="table table-sm mb-0">
+                                    <tbody>
+                                        <tr><td>📊 상태 확인</td><td class="text-muted small">현재 모드·관수·스케줄러</td></tr>
+                                        <tr><td>📋 오늘 이력</td><td class="text-muted small">오늘 관수 기록</td></tr>
+                                        <tr><td>📅 스케줄 목록</td><td class="text-muted small">등록된 스케줄</td></tr>
+                                        <tr><td>💧 관수 시작</td><td class="text-muted small">구역·시간 선택 후 시작</td></tr>
+                                        <tr><td>🛑 관수 중단</td><td class="text-muted small">현재 관수 즉시 중단</td></tr>
+                                        <tr><td>🔇 1시간 무음</td><td class="text-muted small">알림 1시간 차단</td></tr>
+                                        <tr><td>🔊 무음 해제</td><td class="text-muted small">알림 재개</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ② 알림 항목 ON/OFF -->
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-bell"></i> 알림 항목 설정
+                            </div>
+                            <div class="card-body">
+                                <div class="list-group list-group-flush" id="alertToggles">
+                                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <div>
+                                            <span class="me-2">🟢</span>
+                                            <span class="fw-bold">서버 시작 알림</span>
+                                        </div>
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox"
+                                                   id="alert_server_start" style="width:3em;height:1.5em"
+                                                   onchange="saveAlertConfig()">
+                                        </div>
+                                    </div>
+                                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <div>
+                                            <span class="me-2">💧</span>
+                                            <span class="fw-bold">관수 시작 알림</span>
+                                        </div>
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox"
+                                                   id="alert_irrigation_start" style="width:3em;height:1.5em"
+                                                   onchange="saveAlertConfig()">
+                                        </div>
+                                    </div>
+                                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <div>
+                                            <span class="me-2">✅</span>
+                                            <span class="fw-bold">관수 완료 알림</span>
+                                        </div>
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox"
+                                                   id="alert_irrigation_done" style="width:3em;height:1.5em"
+                                                   onchange="saveAlertConfig()">
+                                        </div>
+                                    </div>
+                                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <div>
+                                            <span class="me-2">🚨</span>
+                                            <span class="fw-bold">수위 부족 알림</span>
+                                        </div>
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox"
+                                                   id="alert_water_level_low" style="width:3em;height:1.5em"
+                                                   onchange="saveAlertConfig()">
+                                        </div>
+                                    </div>
+                                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <div>
+                                            <span class="me-2">⚠️</span>
+                                            <span class="fw-bold">수위 과잉 알림</span>
+                                        </div>
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox"
+                                                   id="alert_water_level_high" style="width:3em;height:1.5em"
+                                                   onchange="saveAlertConfig()">
+                                        </div>
+                                    </div>
+                                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <div>
+                                            <span class="me-2">🔴</span>
+                                            <span class="fw-bold">센서 오류 알림</span>
+                                        </div>
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox"
+                                                   id="alert_sensor_error" style="width:3em;height:1.5em"
+                                                   onchange="saveAlertConfig()">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="alert alert-success mt-3 mb-0 py-2 d-none" id="alertSaveMsg">
+                                    <i class="bi bi-check-circle"></i> 설정이 저장되었습니다.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ③ 수위 경고 임계값 -->
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-droplet-half"></i> 수위 경고 임계값
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted small">이 범위를 벗어나면 텔레그램으로 경고를 전송합니다.</p>
+
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold">
+                                        💧 물탱크(Tank1) 최소: <span id="tank1MinVal">20</span>%
+                                    </label>
+                                    <input type="range" class="form-range" id="tank1Min"
+                                           min="5" max="50" value="20"
+                                           oninput="document.getElementById('tank1MinVal').textContent=this.value">
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold">
+                                        💧 물탱크(Tank1) 최대: <span id="tank1MaxVal">90</span>%
+                                    </label>
+                                    <input type="range" class="form-range" id="tank1Max"
+                                           min="50" max="100" value="90"
+                                           oninput="document.getElementById('tank1MaxVal').textContent=this.value">
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold">
+                                        🧪 양액탱크(Tank2) 최소: <span id="tank2MinVal">20</span>%
+                                    </label>
+                                    <input type="range" class="form-range" id="tank2Min"
+                                           min="5" max="50" value="20"
+                                           oninput="document.getElementById('tank2MinVal').textContent=this.value">
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold">
+                                        🧪 양액탱크(Tank2) 최대: <span id="tank2MaxVal">90</span>%
+                                    </label>
+                                    <input type="range" class="form-range" id="tank2Max"
+                                           min="50" max="100" value="90"
+                                           oninput="document.getElementById('tank2MaxVal').textContent=this.value">
+                                </div>
+
+                                <button class="btn btn-success btn-lg w-100" onclick="saveThresholdConfig()">
+                                    <i class="bi bi-check-circle"></i> 임계값 저장
+                                </button>
+                                <div class="alert alert-success mt-2 mb-0 py-2 d-none" id="threshSaveMsg">
+                                    <i class="bi bi-check-circle"></i> 임계값이 저장되었습니다.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div><!-- /row -->
+            </div><!-- /tab-pane alerts -->
 
         </div>
     </div>
