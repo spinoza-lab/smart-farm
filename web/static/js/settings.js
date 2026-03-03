@@ -25,10 +25,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // 🔥 페이지 로드 시에는 updateCurrentValues() 호출 안 함!
     // (캘리브레이션 탭 활성화 시에만 호출)
     
-    // 저장된 폰트 크기 불러오기
-    const savedFontSize = localStorage.getItem('fontSize') || 'normal';
-    setFontSize(savedFontSize);
-    
     // Bootstrap 탭 이벤트 리스너 등록
     const calibrationTab = document.querySelector('button[data-bs-target="#calibration"]');
     
@@ -71,55 +67,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-
-// ========================================
-// 폰트 크기 조절
-// ========================================
-const fontSizes = ['xs', 'small', 'normal', 'medium', 'large', 'xl', 'xxl'];
-let currentFontIndex = 2;
-
-function setFontSize(size) {
-    document.body.classList.remove('font-xs', 'font-small', 'font-medium', 'font-large', 'font-xl', 'font-xxl');
-    
-    if (size === 'xs') {
-        document.body.classList.add('font-xs');
-        currentFontIndex = 0;
-    } else if (size === 'small') {
-        document.body.classList.add('font-small');
-        currentFontIndex = 1;
-    } else if (size === 'normal') {
-        currentFontIndex = 2;
-    } else if (size === 'medium') {
-        document.body.classList.add('font-medium');
-        currentFontIndex = 3;
-    } else if (size === 'large') {
-        document.body.classList.add('font-large');
-        currentFontIndex = 4;
-    } else if (size === 'xl') {
-        document.body.classList.add('font-xl');
-        currentFontIndex = 5;
-    } else if (size === 'xxl') {
-        document.body.classList.add('font-xxl');
-        currentFontIndex = 6;
-    }
-    
-    localStorage.setItem('fontSize', size);
-    console.log('폰트 크기:', size, `(${currentFontIndex + 1}/7)`);
-}
-
-function increaseFontSize() {
-    currentFontIndex = Math.min(currentFontIndex + 1, fontSizes.length - 1);
-    setFontSize(fontSizes[currentFontIndex]);
-}
-
-function decreaseFontSize() {
-    currentFontIndex = Math.max(currentFontIndex - 1, 0);
-    setFontSize(fontSizes[currentFontIndex]);
-}
-
-function resetFontSize() {
-    setFontSize('normal');
-}
 
 // ========================================
 // 숫자 입력 조절 (+/- 버튼)

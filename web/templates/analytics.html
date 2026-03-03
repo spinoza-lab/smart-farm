@@ -347,13 +347,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{{ url_for('static', filename='js/analytics.js') }}?v=1"></script>
-<script>
-    let currentFontIndex = 2;
-    function setFontSize(s){document.body.className=document.body.className.replace(/font-\w+/g,'');if(s!=='normal')document.body.classList.add('font-'+s);localStorage.setItem('analyticsFontSize',s);currentFontIndex=['xs','small','normal','medium','large','xl','xxl'].indexOf(s);}
-    function increaseFontSize(){const s=['xs','small','normal','medium','large','xl','xxl'];currentFontIndex=Math.min(currentFontIndex+1,s.length-1);setFontSize(s[currentFontIndex]);}
-    function decreaseFontSize(){const s=['xs','small','normal','medium','large','xl','xxl'];currentFontIndex=Math.max(currentFontIndex-1,0);setFontSize(s[currentFontIndex]);}
-    function resetFontSize(){currentFontIndex=2;setFontSize('normal');}
-    document.addEventListener('DOMContentLoaded',()=>{const saved=localStorage.getItem('analyticsFontSize')||'normal';setFontSize(saved);});
-</script>
+<script src="{{ url_for('static', filename='js/font-utils.js') }}"></script>
 </body>
 </html>

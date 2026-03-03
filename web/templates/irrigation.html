@@ -98,7 +98,7 @@
                 <div class="d-flex align-items-center gap-2">
                   <i class="bi bi-hand-index fs-4" id="mode-icon" style="color:#f57f17;"></i>
                   <div>
-                    <div class="fw-bold" id="mode-text" style="color:#e65100;">수동 모드</div>
+                    <div class="fw-bold" id="mode-text" style="color:#6c757d;">로딩 중...</div>
                     <small class="text-muted">관수 방식을 선택하세요</small>
                   </div>
                   <span class="ms-auto badge bg-secondary" id="irr-status-badge">대기 중</span>
@@ -173,6 +173,20 @@
     </div>
     <!-- 탭2: 구역별 제어 -->
     <div class="tab-pane fade" id="zones" role="tabpanel">
+      <!-- 관수 시간 설정 -->
+      <div class="d-flex align-items-center gap-3 mb-3 p-3 bg-white rounded shadow-sm">
+        <label class="fw-bold mb-0" style="white-space:nowrap;"><i class="bi bi-stopwatch me-1 text-primary"></i>관수 시간</label>
+        <div class="input-group" style="max-width:200px;">
+          <button class="btn btn-outline-secondary" type="button"
+                  onclick="const e=document.getElementById('global-duration');e.value=Math.max(1,parseInt(e.value||5)-1)">−</button>
+          <input type="number" class="form-control text-center fw-bold" id="global-duration"
+                 value="5" min="1" max="60" style="font-size:1.1rem;">
+          <span class="input-group-text">분</span>
+          <button class="btn btn-outline-secondary" type="button"
+                  onclick="const e=document.getElementById('global-duration');e.value=Math.min(60,parseInt(e.value||5)+1)">+</button>
+        </div>
+        <small class="text-muted">구역 버튼 클릭 시 이 시간으로 관수합니다</small>
+      </div>
       <div class="row g-2" id="zone-cards-container"></div>
     </div>
 
@@ -181,13 +195,6 @@
 <!-- 임계값 설정은 설정 페이지 > 자동 관수 설정 탭에서 관리합니다 -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{{ url_for('static', filename='js/irrigation.js') }}?v=1"></script>
-<script>
-  let currentFontIndex=2;
-  function setFontSize(s){document.body.className=document.body.className.replace(/font-\w+/g,'');if(s!=='normal')document.body.classList.add('font-'+s);localStorage.setItem('irrigationFontSize',s);currentFontIndex=['xs','small','normal','medium','large','xl','xxl'].indexOf(s);}
-  function increaseFontSize(){const s=['xs','small','normal','medium','large','xl','xxl'];currentFontIndex=Math.min(currentFontIndex+1,s.length-1);setFontSize(s[currentFontIndex]);}
-  function decreaseFontSize(){const s=['xs','small','normal','medium','large','xl','xxl'];currentFontIndex=Math.max(currentFontIndex-1,0);setFontSize(s[currentFontIndex]);}
-  function resetFontSize(){currentFontIndex=2;setFontSize('normal');}
-  document.addEventListener('DOMContentLoaded',()=>{const saved=localStorage.getItem('irrigationFontSize')||'normal';setFontSize(saved);});
-</script>
+<script src="{{ url_for('static', filename='js/font-utils.js') }}"></script>
 </body>
 </html>

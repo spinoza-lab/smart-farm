@@ -434,42 +434,7 @@
     <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=9"></script>
 
     <!-- 폰트 크기 조절 스크립트 -->
-    <script>
-        let currentFontIndex = 2; // 기본값: normal (18px)
-
-        function setFontSize(size) {
-            document.body.className = document.body.className.replace(/font-\w+/g, '');
-            if (size !== 'normal') {
-                document.body.classList.add('font-' + size);
-            }
-            localStorage.setItem('fontSize', size);
-            currentFontIndex = ['xs', 'small', 'normal', 'medium', 'large', 'xl', 'xxl'].indexOf(size);
-            console.log('폰트 크기:', size, `(${currentFontIndex + 1}/7)`);
-        }
-
-        function increaseFontSize() {
-            const sizes = ['xs', 'small', 'normal', 'medium', 'large', 'xl', 'xxl'];
-            currentFontIndex = Math.min(currentFontIndex + 1, sizes.length - 1);
-            setFontSize(sizes[currentFontIndex]);
-        }
-
-        function decreaseFontSize() {
-            const sizes = ['xs', 'small', 'normal', 'medium', 'large', 'xl', 'xxl'];
-            currentFontIndex = Math.max(currentFontIndex - 1, 0);
-            setFontSize(sizes[currentFontIndex]);
-        }
-
-        function resetFontSize() {
-            currentFontIndex = 2;
-            setFontSize('normal');
-        }
-
-        // 페이지 로드 시 저장된 폰트 크기 적용
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedSize = localStorage.getItem('fontSize') || 'normal';
-            setFontSize(savedSize);
-        });
-    </script>
+    <script src="{{ url_for('static', filename='js/font-utils.js') }}"></script>
 
 </body>
 </html>
