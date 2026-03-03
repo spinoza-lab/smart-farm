@@ -189,29 +189,27 @@ def init_monitoring_system():
             )
             print("✅ 토양 센서 & 자동 관수 초기화 완료")
 
-            # ── IrrigationScheduler 초기화 ──────────────
+            # ── IrrigationScheduler 초기화 + 모드 복원 ──────────────
             global irrigation_scheduler
             try:
                 irrigation_scheduler = IrrigationScheduler(auto_irrigation)
                 print("✅ IrrigationScheduler 초기화 완료")
-                auto_irrigation._scheduler = irrigation_scheduler
-                if auto_irrigation.mode == "auto" and not irrigation_scheduler._running:
-                    irrigation_scheduler.start()
+
+                # Fix B (수정): 스케줄러 연결 전에 저장된 모드 먼저 복원
+                try:
+                    _b_cfg  = _load_soil_config()
+                    _b_mode = _b_cfg.get('irrigation', {}).get('mode', 'auto')  # 기본값 auto
+                    auto_irrigation.set_mode(_b_mode)  # 항상 set_mode 호출 (스케줄러 연동 포함)
+                    print(f"[Init] 모드 설정: {_b_mode}")
+                except Exception as _me:
+                    print(f"[Init] 모드 복원 실패: {_me}")
+
+                # attach_scheduler: 모드 복원 후 연결 → 내부에서 mode 체크 후 스케줄러 시작
+                auto_irrigation.attach_scheduler(irrigation_scheduler)
+                print(f"[Init] 스케줄러 연결 완료 (running={irrigation_scheduler._running})")
             except Exception as _se:
                 print(f"⚠️  IrrigationScheduler 초기화 실패: {_se}")
                 irrigation_scheduler = None
-
-            # ── Fix B: 저장된 모드 복원 (patch_v4e) ──
-            try:
-                _b_cfg  = _load_soil_config()
-                _b_mode = _b_cfg.get('irrigation', {}).get('mode', 'manual')
-                if _b_mode and _b_mode != auto_irrigation.mode:
-                    auto_irrigation.set_mode(_b_mode)
-                    print(f"[Init] 저장된 모드 복원: {_b_mode}")
-                else:
-                    print(f"[Init] 현재 모드 유지: {auto_irrigation.mode}")
-            except Exception as _me:
-                print(f"[Init] 모드 복원 실패: {_me}")
 
         except Exception as e:
             print(f"⚠️  토양 센서 초기화 실패 (센서 미연결?): {e}")
@@ -747,17 +745,8 @@ def set_irrigation_mode():
     mode = request.json.get('mode')
     ok, msg = auto_irrigation.set_mode(mode)
 
-    # ── 스케줄러 start / stop 연동 ────────────────
-    global irrigation_scheduler
-    if irrigation_scheduler:
-        if mode == 'schedule':
-            if not irrigation_scheduler._running:
-                irrigation_scheduler.start()
-                print("[Mode] 스케줄러 시작됨")
-        else:
-            if irrigation_scheduler._running:
-                irrigation_scheduler.stop()
-                print("[Mode] 스케줄러 중지됨")
+    # ── [Fix M2] 스케줄러는 auto_controller.set_mode()가 내부에서 관리
+    #    (app.py에서 중복 stop/start 하면 충돌 발생 → 제거)
 
     # ── Fix A: 모드를 soil_sensors.json 에 영구 저장 ──
     if ok:
