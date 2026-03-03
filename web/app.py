@@ -1555,13 +1555,36 @@ def get_notification_status():
 
 @app.route('/api/notifications/config', methods=['GET'])
 def get_notification_config():
-    """알림 설정 전체 조회"""
+    """알림 설정 전체 조회 - 파일 깨짐 시 메모리값으로 복구"""
     import json as _json
+    default = {
+        "telegram": {"enabled": True, "token": "", "chat_id": ""},
+        "alerts": {
+            "server_start": True, "irrigation_start": True,
+            "irrigation_done": True, "water_level_low": True,
+            "water_level_high": True, "sensor_error": True
+        },
+        "thresholds": {
+            "tank1_min": 20, "tank1_max": 90,
+            "tank2_min": 20, "tank2_max": 90
+        }
+    }
+    global telegram_notifier
     try:
         with open("/home/pi/smart_farm/config/notifications.json", encoding="utf-8") as f:
-            return jsonify(_json.load(f))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+            cfg = _json.load(f)
+        # 파일은 읽혔지만 token이 빈 경우 메모리에서 보완
+        if telegram_notifier and not cfg.get("telegram", {}).get("token"):
+            cfg.setdefault("telegram", {})["token"]   = telegram_notifier.token
+            cfg.setdefault("telegram", {})["chat_id"] = telegram_notifier.chat_id
+            cfg.setdefault("telegram", {})["enabled"] = True
+        return jsonify(cfg)
+    except Exception:
+        # 파일 없거나 깨진 경우: 메모리값으로 default 완성 후 반환
+        if telegram_notifier:
+            default["telegram"]["token"]   = telegram_notifier.token
+            default["telegram"]["chat_id"] = telegram_notifier.chat_id
+        return jsonify(default)
 
 @app.route('/api/notifications/config', methods=['POST'])
 def save_notification_config():
@@ -1576,11 +1599,17 @@ def save_notification_config():
         except Exception:
             _existing = {}
         _tg = data.setdefault("telegram", {})
+        # 1순위: 메모리의 telegram_notifier (항상 정확)
+        # 2순위: 파일의 기존값
+        # 3순위: 빈값 (마지막 수단)
+        global telegram_notifier
+        _mem_token   = telegram_notifier.token    if telegram_notifier else ""
+        _mem_chat_id = telegram_notifier.chat_id  if telegram_notifier else ""
         if not _tg.get("token"):
-            _tg["token"] = _existing.get("telegram", {}).get("token", "")
+            _tg["token"]   = _mem_token   or _existing.get("telegram", {}).get("token", "")
         if not _tg.get("chat_id"):
-            _tg["chat_id"] = _existing.get("telegram", {}).get("chat_id", "")
-        if not _tg.get("enabled") and "enabled" not in _tg:
+            _tg["chat_id"] = _mem_chat_id or _existing.get("telegram", {}).get("chat_id", "")
+        if "enabled" not in _tg:
             _tg["enabled"] = _existing.get("telegram", {}).get("enabled", True)
         with open("/home/pi/smart_farm/config/notifications.json", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
