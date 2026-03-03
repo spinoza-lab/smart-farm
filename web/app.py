@@ -1568,6 +1568,20 @@ def save_notification_config():
     """알림 설정 저장 + alert_manager 임계값 즉시 반영"""
     try:
         data = request.get_json()
+        # token/chat_id 누락 방지: 기존 값 보존
+        import json as _j
+        try:
+            with open("/home/pi/smart_farm/config/notifications.json", "r", encoding="utf-8") as _f:
+                _existing = _j.load(_f)
+        except Exception:
+            _existing = {}
+        _tg = data.setdefault("telegram", {})
+        if not _tg.get("token"):
+            _tg["token"] = _existing.get("telegram", {}).get("token", "")
+        if not _tg.get("chat_id"):
+            _tg["chat_id"] = _existing.get("telegram", {}).get("chat_id", "")
+        if not _tg.get("enabled") and "enabled" not in _tg:
+            _tg["enabled"] = _existing.get("telegram", {}).get("enabled", True)
         with open("/home/pi/smart_farm/config/notifications.json", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
