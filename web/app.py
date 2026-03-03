@@ -1565,11 +1565,33 @@ def get_notification_config():
 
 @app.route('/api/notifications/config', methods=['POST'])
 def save_notification_config():
-    """알림 설정 저장"""
+    """알림 설정 저장 + alert_manager 임계값 즉시 반영"""
     try:
         data = request.get_json()
         with open("/home/pi/smart_farm/config/notifications.json", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+        # alert_manager 임계값 런타임 즉시 반영
+        global alert_manager
+        if alert_manager and "thresholds" in data:
+            th = data["thresholds"]
+            try:
+                alert_manager.set_threshold(
+                    1,
+                    min_level=float(th.get("tank1_min", 20)),
+                    max_level=float(th.get("tank1_max", 90))
+                )
+                alert_manager.set_threshold(
+                    2,
+                    min_level=float(th.get("tank2_min", 20)),
+                    max_level=float(th.get("tank2_max", 90))
+                )
+                print(f"[AlertManager] 임계값 즉시 반영: "
+                      f"탱크1={th.get('tank1_min')}~{th.get('tank1_max')}%, "
+                      f"탱크2={th.get('tank2_min')}~{th.get('tank2_max')}%")
+            except Exception as _ae:
+                print(f"[AlertManager] 임계값 반영 실패: {_ae}")
+
         return jsonify({"success": True, "message": "알림 설정 저장 완료"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

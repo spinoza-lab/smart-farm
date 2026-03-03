@@ -214,7 +214,16 @@ class TelegramNotifier:
             pass
 
     # ── 이벤트별 자동 알림 메서드 ─────────────────────────────────────
+    def _alert_enabled(self, key: str) -> bool:
+        """notifications.json alerts.<key>가 True인지 확인. 읽기 실패 시 True(전송)."""
+        try:
+            return _load_config().get("alerts", {}).get(key, True)
+        except Exception:
+            return True
+
     def notify_server_start(self):
+        if not self._alert_enabled("server_start"):
+            return
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.send(
             "🟢 <b>스마트팜 서버 시작</b>\n"
@@ -225,6 +234,8 @@ class TelegramNotifier:
         )
 
     def notify_water_level_low(self, tank_num: int, level: float, min_level: float):
+        if not self._alert_enabled("water_level_low"):
+            return
         emoji = "🚨" if level < min_level * 0.8 else "⚠️"
         self.send(
             f"{emoji} <b>탱크{tank_num} 수위 부족!</b>\n"
@@ -233,6 +244,8 @@ class TelegramNotifier:
         )
 
     def notify_water_level_high(self, tank_num: int, level: float, max_level: float):
+        if not self._alert_enabled("water_level_high"):
+            return
         self.send(
             f"⚠️ <b>탱크{tank_num} 수위 과잉!</b>\n"
             f"📊 현재: <b>{level:.1f}%</b>  (최대: {max_level:.0f}%)\n"
@@ -240,6 +253,8 @@ class TelegramNotifier:
         )
 
     def notify_irrigation_start(self, zone_id: int, duration: int, trigger: str):
+        if not self._alert_enabled("irrigation_start"):
+            return
         trigger_map = {"scheduler": "⏰ 스케줄", "auto": "🤖 자동",
                        "manual": "👆 수동", "telegram": "📱 텔레그램"}
         t_str = trigger_map.get(trigger, trigger)
@@ -252,11 +267,13 @@ class TelegramNotifier:
     def notify_irrigation_done(self, zone_id: int, duration: int,
                                 trigger: str, success: bool):
         if not success:
-            # 중단(aborted)은 실패가 아닌 정상 중단 메시지로 표시
+            # 중단(aborted)은 irrigation_done 토글에 관계없이 항상 전송
             self.send(
                 f"🛑 <b>관수 중단됨</b> – 구역{zone_id}\n"
                 f"⏱ {duration}초 경과  |  📌 {trigger}"
             )
+            return
+        if not self._alert_enabled("irrigation_done"):
             return
         trigger_map = {"scheduler": "⏰ 스케줄", "auto": "🤖 자동",
                        "manual": "👆 수동", "telegram": "📱 텔레그램"}
@@ -268,6 +285,8 @@ class TelegramNotifier:
         )
 
     def notify_sensor_error(self, message: str):
+        if not self._alert_enabled("sensor_error"):
+            return
         self.send(f"🔴 <b>센서 오류</b>\n{message}")
 
     def notify_alert(self, alert):
@@ -279,16 +298,22 @@ class TelegramNotifier:
         if alert.level == AlertLevel.INFO:
             return
         if alert.alert_type == AlertType.LOW_WATER_LEVEL:
+            _th = _load_config().get("thresholds", {})
+            _tnum = alert.tank_num or 1
+            _min = float(_th.get(f"tank{_tnum}_min", 20.0))
             self.notify_water_level_low(
-                tank_num=alert.tank_num or 1,
+                tank_num=_tnum,
                 level=alert.value or 0,
-                min_level=20.0
+                min_level=_min
             )
         elif alert.alert_type == AlertType.HIGH_WATER_LEVEL:
+            _th = _load_config().get("thresholds", {})
+            _tnum = alert.tank_num or 1
+            _max = float(_th.get(f"tank{_tnum}_max", 90.0))
             self.notify_water_level_high(
-                tank_num=alert.tank_num or 1,
+                tank_num=_tnum,
                 level=alert.value or 0,
-                max_level=90.0
+                max_level=_max
             )
         elif alert.alert_type == AlertType.SENSOR_ERROR:
             self.notify_sensor_error(alert.message)
@@ -314,9 +339,10 @@ class TelegramNotifier:
     def get_status(self) -> dict:
         """봇 상태 딕셔너리 반환 (app.py /api/notifications/status 용)"""
         return {
-            "polling":  self._polling,
-            "is_muted": self._is_muted(),
+            "polling":        self._polling,
+            "is_muted":       self._is_muted(),
             "mute_remaining": self._mute_remaining(),
+            "mute_until":     self._mute_until,   # Unix timestamp (float or None)
         }
 
         print("[Telegram] 폴링 중지")
