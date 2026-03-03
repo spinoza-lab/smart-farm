@@ -9,6 +9,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+if not logger.handlers:
+    _sh = logging.StreamHandler()
+    _sh.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s %(message)s', '%H:%M:%S'))
+    logger.addHandler(_sh)
+    logger.setLevel(logging.DEBUG)
 
 SCHEDULES_PATH   = Path("/home/pi/smart_farm/config/schedules.json")
 GRACE_SECONDS    = 600

@@ -54,6 +54,10 @@ class AutoIrrigationController:
         self.last_sensor_data   = {}
         self.alert_callback     = None
 
+        # Fix C – patch_v4f: 관수 진행 시간 추적
+        self._irr_start_time = None   # datetime
+        self._irr_duration   = 0      # 초
+
         self._load_config()
         os.makedirs(os.path.dirname(self.LOG_PATH), exist_ok=True)
 
@@ -210,7 +214,11 @@ class AutoIrrigationController:
     # ──────────────────────────────────────
     # 단일 구역 관수
     # ──────────────────────────────────────
-    def irrigate_zone(self, zone_id, duration=None):
+    def start_zone_irrigation(self, zone_id, duration=None, trigger="scheduler"):
+        """스케줄러 호출용 래퍼 – irrigate_zone() 위임"""
+        return self.irrigate_zone(zone_id=zone_id, duration=duration, trigger=trigger)
+
+    def irrigate_zone(self, zone_id, duration=None, trigger=None):
         """단일 구역 관수 실행"""
         if self.is_irrigating:
             return False, f"이미 관수 중 (구역 {self.current_zone})"
@@ -218,9 +226,11 @@ class AutoIrrigationController:
         duration = duration or self.irrigation_cfg.get('irrigation_duration', 300)
 
         print(f"\n💧 구역 {zone_id} 관수 시작 ({duration}초)")
-        self.is_irrigating = True
-        self.current_zone  = zone_id
-        start_time = datetime.now()
+        self.is_irrigating   = True
+        self.current_zone    = zone_id
+        self._irr_start_time = datetime.now()   # Fix C
+        self._irr_duration   = duration          # Fix C
+        start_time           = self._irr_start_time
 
         try:
             if self.relay_controller:
@@ -246,15 +256,17 @@ class AutoIrrigationController:
             else:
                 print(f"  [시뮬레이션] 구역 {zone_id} 밸브 OFF, 펌프 OFF")
 
-            self.is_irrigating = False
-            self.current_zone  = None
+            self.is_irrigating   = False
+            self.current_zone    = None
+            self._irr_start_time = None   # Fix C
+            self._irr_duration   = 0      # Fix C
 
         # 이력 기록
         record = {
             'zone_id':    zone_id,
             'start_time': start_time.strftime('%Y-%m-%d %H:%M:%S'),
             'duration':   duration,
-            'trigger':    self.mode
+            'trigger':    trigger if trigger is not None else self.mode
         }
         # 관수 전 수분 데이터 추가
         moisture_before = ''
@@ -296,14 +308,21 @@ class AutoIrrigationController:
         if self.mode == 'auto' and not scheduler._running:
             scheduler.start()
     def get_status(self):
+        # Fix C – patch_v4f: 관수 경과/남은 시간 계산
+        irr_elapsed = 0
+        irr_total   = self._irr_duration or 0
+        if self.is_irrigating and self._irr_start_time:
+            irr_elapsed = int((datetime.now() - self._irr_start_time).total_seconds())
         return {
-            'mode':           self.mode,
-            'is_running':     self.is_running,
-            'is_irrigating':  self.is_irrigating,
-            'current_zone':   self.current_zone,
-            'zone_thresholds': self.zone_thresholds,
+            'mode':             self.mode,
+            'is_running':       self.is_running,
+            'is_irrigating':    self.is_irrigating,
+            'current_zone':     self.current_zone,
+            'irr_elapsed':      irr_elapsed,
+            'irr_total':        irr_total,
+            'zone_thresholds':  self.zone_thresholds,
             'last_sensor_data': self.last_sensor_data,
-            'recent_history': self.irrigation_history[-10:]
+            'recent_history':   self.irrigation_history[-10:]
         }
 
     def get_sensor_data(self):
