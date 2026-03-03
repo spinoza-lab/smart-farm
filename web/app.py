@@ -1582,7 +1582,7 @@ def send_notification_test():
         return jsonify({"success": False, "message": "텔레그램 봇이 초기화되지 않았습니다"})
     try:
         from datetime import datetime as _dt
-        telegram_notifier.send_menu(
+        telegram_notifier.send(
             f"🧪 <b>테스트 메시지</b>\n"
             f"⏰ {_dt.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"✅ 알림 설정이 정상 작동 중입니다!"

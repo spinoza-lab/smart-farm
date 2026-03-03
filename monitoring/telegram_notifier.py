@@ -310,6 +310,15 @@ class TelegramNotifier:
 
     def stop_polling(self):
         self._polling = False
+
+    def get_status(self) -> dict:
+        """봇 상태 딕셔너리 반환 (app.py /api/notifications/status 용)"""
+        return {
+            "polling":  self._polling,
+            "is_muted": self._is_muted(),
+            "mute_remaining": self._mute_remaining(),
+        }
+
         print("[Telegram] 폴링 중지")
 
     def _poll_loop(self):
