@@ -207,7 +207,7 @@ async function loadAlerts() {
             if (data.alerts.length === 0) {
                 alertList.innerHTML = '<div class="text-center text-muted p-3">경고 없음</div>';
             } else {
-                data.alerts.forEach(alert => addAlertToList(alert));
+                data.alerts.slice().reverse().forEach(alert => addAlertToList(alert));
             }
         }
     } catch (error) {
@@ -365,7 +365,11 @@ function loadIrrigationStatus() {
         .catch(e => console.warn('관수 상태 로드 실패:', e));
 }
 
-function updateIrrigationStatusCard(data) {
+function updateIrrigationStatusCard(apiResp) {
+    // flat 구조({mode:...}) 또는 래핑 구조({success,data:{...}}) 모두 지원
+    const _raw   = apiResp || {};
+    const _inner = (_raw.data && typeof _raw.data === 'object') ? _raw.data : {};
+    const data   = Object.assign({}, _raw, _inner);   // _inner가 _raw를 덮어씀
     const modeEl     = document.getElementById('irrigationModeLabel');
     const activeEl   = document.getElementById('irrigationActiveLabel');
     const zoneEl     = document.getElementById('irrigationCurrentZone');
@@ -373,8 +377,10 @@ function updateIrrigationStatusCard(data) {
     const moistureEl = document.getElementById('irrigationMoistureGrid');
 
     if (modeEl) {
-        const isAuto = data.mode === 'auto';
-        modeEl.textContent = isAuto ? '자동 모드' : '수동 모드';
+        const modeMap = { auto: '자동 모드', schedule: '자동(스케줄)', manual: '수동 모드' };
+        const modeText = modeMap[data.mode] || '수동 모드';
+        const isAuto = data.mode === 'auto' || data.mode === 'schedule';
+        modeEl.textContent = modeText;
         modeEl.className = `badge ${isAuto ? 'bg-success' : 'bg-secondary'}`;
     }
     if (activeEl) {

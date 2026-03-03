@@ -25,7 +25,8 @@ from hardware.modbus_soil_sensor import SoilSensorManager
 from irrigation.auto_controller import AutoIrrigationController
 from irrigation.scheduler import IrrigationScheduler
 from monitoring.data_logger import DataLogger
-from monitoring.alert_manager import AlertManager, AlertLevel
+from monitoring.alert_manager import AlertManager
+from monitoring.telegram_notifier import TelegramNotifier
 
 # Flask 앱 초기화
 app = Flask(__name__)
@@ -207,6 +208,26 @@ def init_monitoring_system():
                 # attach_scheduler: 모드 복원 후 연결 → 내부에서 mode 체크 후 스케줄러 시작
                 auto_irrigation.attach_scheduler(irrigation_scheduler)
                 print(f"[Init] 스케줄러 연결 완료 (running={irrigation_scheduler._running})")
+
+                # ── Stage 8: 텔레그램 알림 초기화 ──────────────────────────
+                global telegram_notifier
+                try:
+                    import json as _jn
+                    with open("/home/pi/smart_farm/config/notifications.json") as _f:
+                        _nc = _jn.load(_f)
+                    _tc = _nc.get("telegram", {})
+                    if _tc.get("enabled", False):
+                        telegram_notifier = TelegramNotifier(
+                            token=_tc["token"], chat_id=_tc["chat_id"]
+                        )
+                        alert_manager.add_callback(telegram_notifier.notify_alert)
+                        telegram_notifier.start_polling(controller=auto_irrigation)
+                        telegram_notifier.notify_server_start()
+                        print("✅ 텔레그램 알림 초기화 완료")
+                    else:
+                        print("ℹ️  텔레그램 알림 비활성")
+                except Exception as _te:
+                    print(f"⚠️ 텔레그램 초기화 실패: {_te}")
             except Exception as _se:
                 print(f"⚠️  IrrigationScheduler 초기화 실패: {_se}")
                 irrigation_scheduler = None

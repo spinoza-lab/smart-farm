@@ -226,6 +226,12 @@ class AutoIrrigationController:
         duration = duration or self.irrigation_cfg.get('irrigation_duration', 300)
 
         print(f"\n💧 구역 {zone_id} 관수 시작 ({duration}초)")
+        # Stage 8: 관수 시작 알림
+        try:
+            import sys as _s; _am = _s.modules.get("__main__") or _s.modules.get("web.app") or _s.modules.get("app")
+            _tn = getattr(_am, "telegram_notifier", None)
+            if _tn: _tn.notify_irrigation_start(zone_id, duration, trigger or self.mode)
+        except Exception: pass
         self.is_irrigating   = True
         self.current_zone    = zone_id
         self._irr_start_time = datetime.now()   # Fix C
@@ -260,6 +266,13 @@ class AutoIrrigationController:
             self.current_zone    = None
             self._irr_start_time = None   # Fix C
             self._irr_duration   = 0      # Fix C
+
+        # Stage 8: 관수 완료 알림
+        try:
+            import sys as _s; _am = _s.modules.get("__main__") or _s.modules.get("web.app") or _s.modules.get("app")
+            _tn = getattr(_am, "telegram_notifier", None)
+            if _tn: _tn.notify_irrigation_done(zone_id, duration, trigger or self.mode, True)
+        except Exception: pass
 
         # 이력 기록
         record = {

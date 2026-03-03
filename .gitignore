@@ -76,3 +76,10 @@ backups/
 *.bak_*
 patch_v3*.py
 logs/
+
+# 백업 파일
+*.bak
+*.bak_*
+
+# 일회성 패치 스크립트
+patch_*.py

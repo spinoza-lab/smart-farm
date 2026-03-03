@@ -19,7 +19,7 @@ SCHEDULES_PATH   = Path("/home/pi/smart_farm/config/schedules.json")
 GRACE_SECONDS    = 600
 INTERLOCK_WAIT   = 10
 INTERLOCK_TIMEOUT= 3600
-CHECK_INTERVAL   = 30
+CHECK_INTERVAL   = 10
 
 def _load_schedules():
     if not SCHEDULES_PATH.exists():

@@ -1,8 +1,8 @@
 # 🌱 스마트 관수 시스템 (Smart Irrigation System)
 
 > **Repository**: [spinoza-lab/smart-farm](https://github.com/spinoza-lab/smart-farm)  
-> **최종 업데이트**: 2026-02-26  
-> **버전**: v3.2
+> **최종 업데이트**: 2026-03-03  
+> **버전**: v3.3
 
 라즈베리파이 기반 자동 관수 및 수위 모니터링 시스템
 
@@ -23,6 +23,7 @@
 - 📥 **CSV 데이터 다운로드** - 탱크 수위·관수 이력 기간별 내보내기
 - 🔧 **systemd 자동 시작** - 부팅 시 자동 실행 및 로그 관리
 - 📊 **데이터 분석 페이지** - 탱크 수위 트렌드, 관수 효율, 구역별 통계, 줌/팬 차트
+- 🤖 **텔레그램 알림 봇** - 서버 시작·관수 시작/완료·수위 경고 자동 알림 + 원격 명령어 제어
 
 ---
 
@@ -65,9 +66,10 @@ smart_farm/
 │   └── config/                # 설정 파일
 │
 ├── monitoring/            # 모니터링 & 로깅
-│   ├── sensor_monitor.py  # 센서 모니터링 (핵심)
-│   ├── data_logger.py     # CSV 데이터 저장
-│   └── alert_manager.py   # 알림 관리
+│   ├── sensor_monitor.py      # 센서 모니터링 (핵심)
+│   ├── data_logger.py         # CSV 데이터 저장
+│   ├── alert_manager.py       # 알림 관리
+│   └── telegram_notifier.py   # 텔레그램 알림 봇 (v3.3 신규)
 │
 ├── web/                   # 웹 인터페이스
 │   ├── app.py             # Flask 서버
@@ -80,7 +82,8 @@ smart_farm/
 │       ├── js/
 │       │   ├── dashboard.js   # 대시보드 (관수 상태 실시간)
 │       │   ├── settings.js    # 스케줄/루틴 CRUD UI
-│       │   └── irrigation.js  # 관수 제어 클라이언트
+│       │   ├── irrigation.js  # 관수 제어 클라이언트
+│       │   └── font-utils.js  # 전역 폰트 크기 관리 (v3.3 신규)
 │       └── favicon.svg
 │
 ├── tools/                 # 유지보수 도구
@@ -94,7 +97,8 @@ smart_farm/
 └── config/                # 설정 파일
     ├── sensor_calibration.json  # 탱크 센서 캘리브레이션
     ├── soil_sensors.json        # 토양 센서 / 관수 설정
-    └── schedules.json           # 스케줄/루틴 목록
+    ├── schedules.json           # 스케줄/루틴 목록
+    └── notifications.json       # 텔레그램 알림 설정 (v3.3 신규)
 ```
 
 ---
@@ -124,6 +128,7 @@ pip install -r requirements.txt
 - `flask-socketio`
 - `pyserial` (RS-485 통신)
 - `minimalmodbus>=2.1.1` (Modbus RTU 드라이버)
+- `requests` (텔레그램 API 통신)
 
 ### 3. I2C / UART 활성화
 
@@ -134,7 +139,38 @@ sudo raspi-config
 sudo reboot
 ```
 
-### 4. 웹 서버 실행
+### 4. 텔레그램 봇 설정
+
+```bash
+# config/notifications.json 생성
+cat > config/notifications.json << 'EOF'
+{
+  "telegram": {
+    "enabled": true,
+    "token": "YOUR_BOT_TOKEN",
+    "chat_id": "YOUR_CHAT_ID"
+  },
+  "alerts": {
+    "server_start": true,
+    "irrigation_start": true,
+    "irrigation_done": true,
+    "water_level_low": true,
+    "water_level_high": true,
+    "sensor_error": true
+  }
+}
+EOF
+```
+
+텔레그램 봇 생성 방법:
+1. `@BotFather` 에서 `/newbot` 명령으로 봇 생성
+2. 발급된 API Token을 `token` 필드에 입력
+3. 봇에게 `/start` 메시지 전송 후 아래 명령으로 Chat ID 확인:
+```bash
+curl -s "https://api.telegram.org/botYOUR_TOKEN/getUpdates" | python3 -m json.tool | grep '"id"'
+```
+
+### 5. 웹 서버 실행
 
 ```bash
 cd ~/smart_farm
@@ -146,7 +182,7 @@ nohup python3 web/app.py > logs/web.log 2>&1 &
 - 로컬: `http://localhost:5000`
 - 네트워크: `http://192.168.0.111:5000` (라즈베리파이 IP)
 
-### 5. systemd 서비스 (자동 시작)
+### 6. systemd 서비스 (자동 시작)
 
 ```bash
 # 서비스 상태 확인
@@ -157,6 +193,82 @@ sudo systemctl restart smart-farm.service
 
 # 부팅 자동 시작 설정
 sudo systemctl enable smart-farm.service
+```
+
+### 7. VS Code Remote-SSH 개발 환경 (macOS)
+
+맥북에서 VS Code로 라즈베리파이에 직접 접속하여 개발할 수 있습니다.
+
+```bash
+# 맥북에서 SSH 키 생성
+ssh-keygen -t ed25519 -C "macbook-to-pi"
+
+# 공개키 라즈베리파이에 등록
+ssh-copy-id pi@192.168.0.111
+
+# SSH config 설정
+cat >> ~/.ssh/config << 'EOF'
+Host smart-farm-pi
+    HostName 192.168.0.111
+    User pi
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519
+EOF
+```
+
+VS Code에서 `Remote - SSH` 익스텐션 설치 후 `smart-farm-pi` 로 접속,  
+`/home/pi/smart_farm` 폴더를 열면 파일 편집·터미널·Git 모두 VS Code에서 사용 가능합니다.
+
+---
+
+## 🤖 텔레그램 알림 봇 (v3.3)
+
+### 자동 알림
+
+서버 또는 시스템 이벤트 발생 시 자동으로 텔레그램 메시지를 전송합니다.
+
+| 이벤트 | 메시지 예시 |
+|--------|------------|
+| 서버 시작 | 🟢 **스마트팜 서버 시작** / ⏰ 2026-03-03 13:32:27 |
+| 관수 시작 | 💧 **관수 시작** / 🌿 구역: 1 \| ⏱ 120초 \| 📌 트리거: ⏰ 스케줄 |
+| 관수 완료 | ✅ **관수 완료** / 🌿 구역: 1 \| ⏱ 120초 \| 📌 트리거: ⏰ 스케줄 |
+| 수위 부족 | 🚨 **탱크1 수위 부족!** / 📊 현재: 15.0% (최소: 20%) |
+| 수위 과잉 | ⚠️ **탱크1 수위 과잉!** / 📊 현재: 95.0% (최대: 90%) |
+| 센서 오류 | 🔴 **센서 오류** / 채널0 비정상 전압 |
+
+### 명령어 봇
+
+텔레그램에서 봇에게 명령어를 보내면 원격으로 시스템을 제어할 수 있습니다.
+
+| 명령어 | 설명 |
+|--------|------|
+| `/help` | 명령어 목록 조회 |
+| `/status` | 현재 모드·관수 상태·스케줄러 상태 |
+| `/history` | 오늘 관수 이력 (최근 5건) |
+| `/schedules` | 등록된 스케줄/루틴 목록 |
+| `/irrigate <구역> <초>` | 즉시 관수 실행 (예: `/irrigate 1 30`) |
+| `/stop` | 현재 관수 즉시 중단 |
+| `/mute <분>` | 알림 무음 (예: `/mute 120`) |
+| `/unmute` | 무음 해제 |
+
+### 알림 설정 (`config/notifications.json`)
+
+```json
+{
+  "telegram": {
+    "enabled": true,
+    "token": "YOUR_BOT_TOKEN",
+    "chat_id": "YOUR_CHAT_ID"
+  },
+  "alerts": {
+    "server_start": true,
+    "irrigation_start": true,
+    "irrigation_done": true,
+    "water_level_low": true,
+    "water_level_high": true,
+    "sensor_error": true
+  }
+}
 ```
 
 ---
@@ -190,6 +302,7 @@ IrrigationScheduler
   ├── 인터록 처리:   동시 관수 방지 (is_irrigating 체크)
   │     ├── ±10분 grace window: 예정 시간 ±10분 이내면 실행 대기
   │     └── 최대 1시간 대기 후 취소
+  ├── 체크 주기:     10초 (CHECK_INTERVAL, v3.3에서 30→10초 단축)
   └── 자동 시작:     auto_controller.mode == 'auto' 시 자동 구동
 ```
 
@@ -228,17 +341,18 @@ IrrigationScheduler
   → relay: 펌프 ON → 해당 구역 밸브 ON
   → duration 초 후 밸브 OFF → 펌프 OFF
   → irrigation_history.csv 기록
+  → 텔레그램 관수 시작/완료 알림 전송
 
 [자동] check_interval 주기 모니터링
   → 12구역 토양 수분 측정
   → 수분 < 임계값 AND 탱크 수위 >= 최소 수위
-  → 관수 실행 → CSV 기록
+  → 관수 실행 → CSV 기록 → 텔레그램 알림
 
-[스케줄/루틴] IrrigationScheduler (60초 주기 체크)
+[스케줄/루틴] IrrigationScheduler (10초 주기 체크)
   → 실행 예정 스케줄 탐색 (±10분 grace window)
   → 인터록 확인 (이미 관수 중이면 대기 또는 취소)
   → check_moisture=true면 수분 임계값 재확인
-  → 관수 실행 → CSV 기록
+  → 관수 실행 → CSV 기록 → 텔레그램 알림
 ```
 
 ---
@@ -439,7 +553,7 @@ IrrigationScheduler
 | 탱크 수위 샘플링 주기 | 10초 (자동) |
 | 샘플 개수 | 10회/주기 (Trimmed Mean) |
 | 자동 관수 점검 주기 | 설정 가능 (기본 10분) |
-| 스케줄 체크 주기 | 60초 |
+| 스케줄 체크 주기 | 10초 (v3.3, 기존 30초) |
 | 인터록 grace window | ±10분 |
 | 최대 관수 대기 시간 | 1시간 |
 | 관수 구역 수 | 12구역 |
@@ -450,6 +564,7 @@ IrrigationScheduler
 | 알림 쿨다운 | 5분 (중복 방지) |
 | 데이터 저장 | CSV (일별 파일) |
 | 업데이트 주기 | 10초 (SocketIO) |
+| 텔레그램 폴링 주기 | 3초 |
 
 ---
 
@@ -497,29 +612,34 @@ IrrigationScheduler
   - ✅ **인터록 처리**: ±10분 grace window, 최대 1시간 대기
   - ✅ **스케줄 CRUD API** 7개 (`/api/schedules/*`)
   - ✅ **UI 분 단위 통합**: 체크 주기·관수 시간 모두 분 입력 (백엔드 초 저장)
-  - ✅ **"분분" 이중 표기 버그 수정**
-  - ✅ **irrigation.html 기본 관수 시간 제거** (설정 페이지로 통합)
-  - ✅ **minimalmodbus 2.1.1 호환 수정** (`precalculate_read_size` 제거)
-  - ✅ **schedules.json `type` 필드 마이그레이션**
-  - ✅ **대시보드 관수 상태 카드 추가** (현재 모드, 다음 스케줄 표시)
 - **2026-02-25 (v3.1 / patch_v4h)** `75027f2` `b177097`:
-  - ✅ **[Fix-서버시작]** `if __name__ == '__main__':` 블록 유실 복구 → silent exit 해결
+  - ✅ **[Fix-서버시작]** `if __name__ == '__main__':` 블록 유실 복구
   - ✅ **[Fix M]** `PUT /api/schedules/<id>` 엔드포인트 복구 → 405 오류 해결
   - ✅ **[Fix B]** `toggle_schedule` 빈 바디 복구 → PATCH 500 오류 해결
   - ✅ **[Fix J]** `/api/schedules/next` 응답에 `start_time`, `minutes_until` 필드 추가
-  - ✅ **[Fix L2]** `settings.js` 구역 `<td>`에 typeBadge 삽입 (schedule/routine 구분 표시)
-  - ✅ GitHub Issue [#5](https://github.com/spinoza-lab/smart-farm/issues/5) 해결 및 자동 종료
+  - ✅ GitHub Issue [#5](https://github.com/spinoza-lab/smart-farm/issues/5) 해결
 - **2026-02-26 (v3.2)** `94e3306` `c1feebf`:
   - ✅ **[Fix S]** `SoilSensorManager` zones 2~12 minimalmodbus 2.x 필수 속성 누락 수정
-    - 공유 시리얼 방식(`__new__`) 초기화 시 `precalculate_read_size` 등 4개 속성 미설정
-    - 수정 전: zones 2~12 `'Instrument' object has no attribute precalculate_read_size'` 오류
-    - 수정 후: 전 구역 동일하게 `No communication` (하드웨어 미연결) 상태로 통일
-  - ✅ **[검증]** Fix A(루틴 저장), Fix C/D(진행바 `irr_elapsed` 실시간 증가) 완료 확인
-  - ✅ GitHub Issue [#4](https://github.com/spinoza-lab/smart-farm/issues/4) 검증 완료 후 종료
-  - ✅ **`tools/set_sensor_address.py`** 신규 추가
-    - CWT-Soil-THC-S RS485 Modbus 주소 설정 전용 CLI 도구
-    - 대화형 모드 / `--scan` / `--set` 3가지 사용 방법 지원
-    - CRC16 검증 포함 FC03(읽기) / FC06(쓰기) 구현, DE/RE GPIO 핀 제어
+  - ✅ **`tools/set_sensor_address.py`** 신규 추가 (RS485 Modbus 주소 설정 CLI)
+  - ✅ GitHub Issue [#4](https://github.com/spinoza-lab/smart-farm/issues/4) 해결
+- **2026-03-03 (v3.3)** `6005970` `ec64bdf` `b3185e8`:
+  - ✅ **[Bug-M1]** 서버 시작 시 스케줄러 미시작 수정 (모드 기본값 `manual` → `auto`)
+  - ✅ **[Bug-M2]** `auto` 모드 선택 시 `scheduler.stop()` 즉시 호출되는 버그 수정
+  - ✅ **[Bug-M3]** `soil_sensors.json` 모드 키 없어 재시작 후 `manual`로 초기화되는 버그 수정
+  - ✅ **[Bug-S]** `start_zone_irrigation()` 메서드 미존재로 `AttributeError` 무음 실패 수정
+    - `auto_controller.py`에 `start_zone_irrigation()` 래퍼 메서드 추가
+    - `irrigate_zone()`에 `trigger` 파라미터 추가 (CSV에 `scheduler` 트리거 정확히 기록)
+  - ✅ **[Logger]** `scheduler.py` logger 핸들러 추가 (기존 무음 드롭 → StreamHandler 출력)
+  - ✅ **[refactor]** 폰트 크기 조절 공통 모듈화 (`font-utils.js` 신규)
+    - 기존 페이지별 개별 localStorage 키 (`irrigationFontSize`, `analyticsFontSize`) → 단일 키 `fontSize` 통합
+    - 인라인 스크립트 제거, 전 페이지 `font-utils.js` 공통 사용
+  - ✅ **[Stage 8]** 텔레그램 알림 봇 구현 (`monitoring/telegram_notifier.py` 신규)
+    - Phase 1: 서버 시작·관수 시작/완료·수위 경고·센서 오류 자동 알림
+    - Phase 2: `/status`, `/history`, `/schedules`, `/irrigate`, `/stop`, `/mute` 명령어 봇
+    - AlertManager 콜백 연동, 폴링 주기 3초
+  - ✅ **[성능]** `CHECK_INTERVAL` 30초 → 10초 단축 (구역 간 전환 딜레이 개선)
+  - ✅ **[개발환경]** VS Code Remote-SSH 설정 (맥북 → 라즈베리파이 직접 개발)
+  - ✅ 주말(2/27~3/2) 7회 미실행 확인 및 전체 원인 규명 완료
 
 ---
 
@@ -537,12 +657,12 @@ IrrigationScheduler
 - [x] Stage 7 — 데이터 분석 페이지 (analytics.html, Chart.js 줌/팬)
 - [x] Stage 7.5 — 모드 단순화 + 루틴 스케줄러 + 분 단위 UI (v3.0)
 - [x] Stage 7.6 — API 버그 수정 + 센서 드라이버 안정화 + 유지보수 도구 추가 (v3.1~v3.2)
+- [x] Stage 8 — 텔레그램 알림 봇 (자동 알림 + 명령어 제어) (v3.3)
 
 ### ⏳ 예정된 Stage
 
-#### Stage 8: 알림 고도화
-- [ ] Telegram 봇 알림 (수위 경고, 관수 완료)
-- [ ] 이메일 알림
+#### Stage 8 잔여: 알림 설정 UI
+- [ ] 웹 UI에서 알림 ON/OFF 토글
 - [ ] 알림 임계값 웹 UI 설정
 
 #### Stage 9: 양액 제어 (PWM)
@@ -587,29 +707,48 @@ python3 -c "import minimalmodbus; print(minimalmodbus.__version__)"
 
 ### RS-485 센서 Modbus 주소 설정
 ```bash
-# 센서 1개씩 연결 후 대화형 주소 설정 (공장 기본 주소: 1)
+# 대화형 주소 설정
 python3 tools/set_sensor_address.py
 
-# 버스 스캔 (응답하는 주소 확인)
+# 버스 스캔
 python3 tools/set_sensor_address.py --scan
 
 # 주소 직접 변경 (예: 주소1 → 구역3)
 python3 tools/set_sensor_address.py --set 1 3
 ```
 
-### IrrigationScheduler 초기화 실패
-```bash
-grep 'IrrigationScheduler' logs/web.log | tail -5
-# auto_irrigation 변수명 및 scheduler.py 인자 확인
-```
-
 ### 스케줄이 실행되지 않음
 ```bash
-# 모드가 auto인지 확인
+# 모드 확인 (auto여야 함)
 curl -s http://localhost:5000/api/irrigation/status | python3 -m json.tool | grep mode
+
+# 스케줄러 실행 여부
+curl -s http://localhost:5000/api/irrigation/status | python3 -m json.tool | grep is_running
 
 # 다음 스케줄 확인
 curl -s http://localhost:5000/api/schedules/next | python3 -m json.tool
+
+# 스케줄러 로그 확인
+grep -a "스케줄러\|큐 추가\|관수 실행" /home/pi/smart_farm/logs/web.log | tail -20
+```
+
+### 텔레그램 알림이 오지 않음
+```bash
+# 직접 전송 테스트
+python3 -c "
+import requests
+r = requests.post(
+  'https://api.telegram.org/botYOUR_TOKEN/sendMessage',
+  json={'chat_id': 'YOUR_CHAT_ID', 'text': '테스트'}
+)
+print(r.status_code, r.json())
+"
+
+# 초기화 로그 확인
+grep -a "텔레그램\|TelegramNotifier" /home/pi/smart_farm/logs/web.log
+
+# notifications.json 확인
+cat /home/pi/smart_farm/config/notifications.json
 ```
 
 ### 관수 시간 단위 문제
@@ -623,7 +762,6 @@ API 저장값: 초 단위 (×60 자동 변환)
 
 ### minimalmodbus `precalculate_read_size` 오류
 ```bash
-# zones 2~12 속성 누락 여부 확인
 grep -n "precalculate_read_size" hardware/modbus_soil_sensor.py
 # SoilSensorManager._init_sensors() 공유 시리얼 블록에 4개 속성 설정 확인
 ```

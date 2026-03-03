@@ -1,57 +1,76 @@
 {
   "schedules": [
     {
-      "id": 1,
+      "id": 14,
+      "type": "schedule",
       "zone_id": 1,
-      "start_time": "06:00",
-      "duration": 300,
+      "start_time": "13:43",
+      "duration": 120,
       "days": [
         0,
+        1,
         2,
-        4
+        3,
+        4,
+        5,
+        6
       ],
       "enabled": true,
-      "created_at": "2026-02-24 10:50:15",
-      "type": "schedule"
+      "created_at": "2026-03-03 13:25:32"
     },
     {
-      "id": 2,
-      "zone_id": 1,
-      "start_time": "11:26",
-      "duration": 10,
-      "days": [],
+      "id": 15,
+      "type": "schedule",
+      "zone_id": 2,
+      "start_time": "13:43",
+      "duration": 120,
+      "days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
       "enabled": true,
-      "created_at": "2026-02-24 11:24:42",
-      "type": "schedule"
+      "created_at": "2026-03-03 13:25:43"
     },
     {
-      "id": 3,
-      "zone_id": 1,
-      "start_time": "11:34",
-      "duration": 5,
-      "days": [],
+      "id": 16,
+      "type": "schedule",
+      "zone_id": 3,
+      "start_time": "13:43",
+      "duration": 120,
+      "days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
       "enabled": true,
-      "created_at": "2026-02-24 11:32:14",
-      "type": "schedule"
+      "created_at": "2026-03-03 13:26:16"
     },
     {
-      "id": 4,
-      "zone_id": 1,
-      "start_time": "11:43",
-      "duration": 5,
-      "days": [],
+      "id": 17,
+      "type": "schedule",
+      "zone_id": 4,
+      "start_time": "13:43",
+      "duration": 120,
+      "days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
       "enabled": true,
-      "created_at": "2026-02-24 11:42:08",
-      "type": "schedule"
-    },
-    {
-      "id": 5,
-      "zone_id": 1,
-      "start_time": "10:20",
-      "duration": 600,
-      "days": [],
-      "enabled": true,
-      "created_at": "2026-02-24 14:56:54"
+      "created_at": "2026-03-03 13:26:43"
     }
   ]
 }
