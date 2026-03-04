@@ -158,12 +158,25 @@ def init_monitoring_system():
             log_dir='/home/pi/smart_farm/logs'
         )
         
-        # AlertManager 초기화
+        # AlertManager 초기화 (notifications.json 에서 thresholds 로드)
+        try:
+            import json as _am_json
+            with open('/home/pi/smart_farm/config/notifications.json') as _am_f:
+                _am_cfg = _am_json.load(_am_f)
+            _am_thr = _am_cfg.get('thresholds', {})
+            _t1_min = float(_am_thr.get('tank1_min', 20.0))
+            _t1_max = float(_am_thr.get('tank1_max', 90.0))
+            _t2_min = float(_am_thr.get('tank2_min', 20.0))
+            _t2_max = float(_am_thr.get('tank2_max', 90.0))
+            print(f'[Init] thresholds 로드: 탱크1={_t1_min}~{_t1_max}%, 탱크2={_t2_min}~{_t2_max}%')
+        except Exception as _am_e:
+            print(f'[Init] thresholds 로드 실패 (기본값 사용): {_am_e}')
+            _t1_min, _t1_max, _t2_min, _t2_max = 20.0, 90.0, 20.0, 90.0
         alert_manager = AlertManager(
-            tank1_min=20.0,
-            tank1_max=90.0,
-            tank2_min=20.0,
-            tank2_max=90.0,
+            tank1_min=_t1_min,
+            tank1_max=_t1_max,
+            tank2_min=_t2_min,
+            tank2_max=_t2_max,
             cooldown_seconds=300,
             log_file='/home/pi/smart_farm/logs/alerts.log'
         )
