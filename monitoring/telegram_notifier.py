@@ -21,18 +21,18 @@ TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 MAIN_MENU = {
     "inline_keyboard": [
         [
-            {"text": "📊 현재 상태",   "callback_data": "cmd:status"},
+            {"text": "📊 상태 확인",   "callback_data": "cmd:status"},
             {"text": "📋 오늘 이력",   "callback_data": "cmd:history"}
         ],
         [
-            {"text": "📅 스케줄 목록", "callback_data": "cmd:schedules"},
-            {"text": "🔇 1시간 무음",  "callback_data": "cmd:mute60"}
+            {"text": "📅 스케줄 목록", "callback_data": "cmd:schedules"}
         ],
         [
             {"text": "💧 관수 시작",   "callback_data": "cmd:irrigate"},
             {"text": "🛑 관수 중단",   "callback_data": "cmd:stop"}
         ],
         [
+            {"text": "🔇 1시간 무음",  "callback_data": "cmd:mute60"},
             {"text": "🔔 무음 해제",   "callback_data": "cmd:unmute"}
         ]
     ]

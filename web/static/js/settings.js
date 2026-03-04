@@ -1167,52 +1167,42 @@ function setSlider(sliderId, labelId, value) {
 }
 
 function saveAlertConfig() {
-    fetch('/api/notifications/config')
-        .then(r => r.json())
-        .then(cfg => {
-            const map = {
-                'alert_server_start':      'server_start',
-                'alert_irrigation_start':  'irrigation_start',
-                'alert_irrigation_done':   'irrigation_done',
-                'alert_water_level_low':   'water_level_low',
-                'alert_water_level_high':  'water_level_high',
-                'alert_sensor_error':      'sensor_error',
-            };
-            cfg.alerts = cfg.alerts || {};
-            Object.entries(map).forEach(([elId, key]) => {
-                const el = document.getElementById(elId);
-                if (el) cfg.alerts[key] = el.checked;
-            });
-            return fetch('/api/notifications/config', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(cfg)
-            });
-        })
-        .then(r => r.json())
-        .then(d => {
-            if (d.success) showMsg('alertSaveMsg');
-        });
+    const map = {
+        'alert_server_start':     'server_start',
+        'alert_irrigation_start': 'irrigation_start',
+        'alert_irrigation_done':  'irrigation_done',
+        'alert_water_level_low':  'water_level_low',
+        'alert_water_level_high': 'water_level_high',
+        'alert_sensor_error':     'sensor_error',
+    };
+    const alerts = {};
+    Object.entries(map).forEach(([elId, key]) => {
+        const el = document.getElementById(elId);
+        if (el) alerts[key] = el.checked;
+    });
+    fetch('/api/notifications/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ alerts })   // ✅ alerts 섹션만 전송 (telegram 없음)
+    })
+    .then(r => r.json())
+    .then(d => { if (d.success) showMsg('alertSaveMsg'); });
 }
 
 function saveThresholdConfig() {
-    fetch('/api/notifications/config')
-        .then(r => r.json())
-        .then(cfg => {
-            cfg.thresholds = {
-                tank1_min: parseInt(document.getElementById('tank1Min')?.value || 20),
-                tank1_max: parseInt(document.getElementById('tank1Max')?.value || 90),
-                tank2_min: parseInt(document.getElementById('tank2Min')?.value || 20),
-                tank2_max: parseInt(document.getElementById('tank2Max')?.value || 90),
-            };
-            return fetch('/api/notifications/config', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(cfg)
-            });
-        })
-        .then(r => r.json())
-        .then(d => { if (d.success) showMsg('threshSaveMsg'); });
+    const thresholds = {
+        tank1_min: parseInt(document.getElementById('tank1Min')?.value  || 20),
+        tank1_max: parseInt(document.getElementById('tank1Max')?.value  || 90),
+        tank2_min: parseInt(document.getElementById('tank2Min')?.value  || 20),
+        tank2_max: parseInt(document.getElementById('tank2Max')?.value  || 90),
+    };
+    fetch('/api/notifications/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ thresholds })  // ✅ thresholds 섹션만 전송 (telegram 없음)
+    })
+    .then(r => r.json())
+    .then(d => { if (d.success) showMsg('threshSaveMsg'); });
 }
 
 function sendTestMessage() {

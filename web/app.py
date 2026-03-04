@@ -12,6 +12,7 @@ from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 import sys
 import os
+import json
 from datetime import datetime, timedelta
 import threading
 import time
@@ -39,10 +40,11 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 sensor_monitor = None
 data_logger = None
 alert_manager = None
+telegram_notifier = None
 relay_controller = None
 soil_sensor_manager = None
 auto_irrigation = None
-irrigation_scheduler = None   # IrrigationScheduler 인스턴스
+irrigation_scheduler = None
 monitoring_active = False
 monitoring_thread = None
 
@@ -1555,89 +1557,96 @@ def get_notification_status():
 
 @app.route('/api/notifications/config', methods=['GET'])
 def get_notification_config():
-    """알림 설정 전체 조회 - 파일 깨짐 시 메모리값으로 복구"""
-    import json as _json
-    default = {
-        "telegram": {"enabled": True, "token": "", "chat_id": ""},
-        "alerts": {
-            "server_start": True, "irrigation_start": True,
-            "irrigation_done": True, "water_level_low": True,
-            "water_level_high": True, "sensor_error": True
-        },
-        "thresholds": {
-            "tank1_min": 20, "tank1_max": 90,
-            "tank2_min": 20, "tank2_max": 90
-        }
-    }
+    """알림 설정 조회 - telegram token은 절대 클라이언트에 노출하지 않음"""
     global telegram_notifier
     try:
-        with open("/home/pi/smart_farm/config/notifications.json", encoding="utf-8") as f:
-            cfg = _json.load(f)
-        # 파일은 읽혔지만 token이 빈 경우 메모리에서 보완
-        if telegram_notifier and not cfg.get("telegram", {}).get("token"):
-            cfg.setdefault("telegram", {})["token"]   = telegram_notifier.token
-            cfg.setdefault("telegram", {})["chat_id"] = telegram_notifier.chat_id
-            cfg.setdefault("telegram", {})["enabled"] = True
-        return jsonify(cfg)
-    except Exception:
-        # 파일 없거나 깨진 경우: 메모리값으로 default 완성 후 반환
-        if telegram_notifier:
-            default["telegram"]["token"]   = telegram_notifier.token
-            default["telegram"]["chat_id"] = telegram_notifier.chat_id
-        return jsonify(default)
+        cfg = {}
+        try:
+            if os.path.exists('/home/pi/smart_farm/config/notifications.json'):
+                with open('/home/pi/smart_farm/config/notifications.json', 'r', encoding='utf-8') as _f:
+                    raw = _f.read().strip()
+                    if raw:
+                        cfg = json.loads(raw)
+        except Exception:
+            cfg = {}
+
+        # telegram token은 응답에서 제거 (프론트엔드가 절대 받지 않도록)
+        safe = {
+            'telegram': {
+                'enabled': cfg.get('telegram', {}).get('enabled', True),
+                'token':   '',          # ← 빈 값으로 마스킹
+                'chat_id': '',          # ← 빈 값으로 마스킹
+            },
+            'alerts':     cfg.get('alerts',     {}),
+            'thresholds': cfg.get('thresholds', {}),
+        }
+        return jsonify(safe)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/notifications/config', methods=['POST'])
 def save_notification_config():
-    """알림 설정 저장 + alert_manager 임계값 즉시 반영"""
+    """알림 설정 저장 - telegram은 항상 메모리에서 보호, 부분 업데이트 지원"""
+    global telegram_notifier, alert_manager
     try:
-        data = request.get_json()
-        # token/chat_id 누락 방지: 기존 값 보존
-        import json as _j
+        incoming = request.get_json(force=True, silent=True) or {}
+        print(f"[DEBUG SAVE] incoming keys={list(incoming.keys())}")
+
+        # ── STEP 1: 기존 파일 읽기 (merge base) ──────────────────
+        base = {}
         try:
-            with open("/home/pi/smart_farm/config/notifications.json", "r", encoding="utf-8") as _f:
-                _existing = _j.load(_f)
-        except Exception:
-            _existing = {}
-        _tg = data.setdefault("telegram", {})
-        # 1순위: 메모리의 telegram_notifier (항상 정확)
-        # 2순위: 파일의 기존값
-        # 3순위: 빈값 (마지막 수단)
-        global telegram_notifier
-        _mem_token   = telegram_notifier.token    if telegram_notifier else ""
-        _mem_chat_id = telegram_notifier.chat_id  if telegram_notifier else ""
-        if not _tg.get("token"):
-            _tg["token"]   = _mem_token   or _existing.get("telegram", {}).get("token", "")
-        if not _tg.get("chat_id"):
-            _tg["chat_id"] = _mem_chat_id or _existing.get("telegram", {}).get("chat_id", "")
-        if "enabled" not in _tg:
-            _tg["enabled"] = _existing.get("telegram", {}).get("enabled", True)
-        with open("/home/pi/smart_farm/config/notifications.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            if os.path.exists('/home/pi/smart_farm/config/notifications.json'):
+                with open('/home/pi/smart_farm/config/notifications.json', 'r', encoding='utf-8') as _f:
+                    raw = _f.read().strip()
+                    if raw:
+                        base = json.loads(raw)
+        except Exception as _e:
+            print(f"[DEBUG SAVE] 파일 읽기 실패(무시): {_e}")
+            base = {}
 
-        # alert_manager 임계값 런타임 즉시 반영
-        global alert_manager
-        if alert_manager and "thresholds" in data:
-            th = data["thresholds"]
+        # ── STEP 2: telegram은 항상 메모리 우선 (파일/요청 무관) ──
+        tg = base.get('telegram', {})
+        try:
+            if telegram_notifier is not None and getattr(telegram_notifier, 'token', ''):
+                tg = {
+                    'enabled': getattr(telegram_notifier, 'enabled', True),
+                    'token':   telegram_notifier.token,
+                    'chat_id': str(telegram_notifier.chat_id),
+                }
+                print(f"[DEBUG SAVE] telegram from memory: chat_id={tg['chat_id']}, token={tg['token'][:10]}...")
+            else:
+                print(f"[DEBUG SAVE] telegram_notifier 없음 → 파일 기존값 사용: {tg}")
+        except Exception as _e:
+            print(f"[DEBUG SAVE] telegram 메모리 읽기 실패(무시): {_e}")
+
+        # ── STEP 3: 요청에서 온 섹션만 덮어쓰기 ─────────────────
+        merged = {
+            'telegram':   tg,
+            'alerts':     incoming.get('alerts',     base.get('alerts',     {})),
+            'thresholds': incoming.get('thresholds', base.get('thresholds', {})),
+        }
+
+        # ── STEP 4: 파일 쓰기 (원자적) ──────────────────────────
+        tmp_path = '/home/pi/smart_farm/config/notifications.json' + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(merged, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, '/home/pi/smart_farm/config/notifications.json')
+        print(f"[DEBUG SAVE] 저장 완료: {list(merged.keys())}")
+
+        # ── STEP 5: AlertManager 임계값 즉시 반영 ────────────────
+        if alert_manager and 'thresholds' in incoming:
+            t = incoming['thresholds']
             try:
-                alert_manager.set_threshold(
-                    1,
-                    min_level=float(th.get("tank1_min", 20)),
-                    max_level=float(th.get("tank1_max", 90))
-                )
-                alert_manager.set_threshold(
-                    2,
-                    min_level=float(th.get("tank2_min", 20)),
-                    max_level=float(th.get("tank2_max", 90))
-                )
-                print(f"[AlertManager] 임계값 즉시 반영: "
-                      f"탱크1={th.get('tank1_min')}~{th.get('tank1_max')}%, "
-                      f"탱크2={th.get('tank2_min')}~{th.get('tank2_max')}%")
-            except Exception as _ae:
-                print(f"[AlertManager] 임계값 반영 실패: {_ae}")
+                alert_manager.set_threshold(1, float(t.get('tank1_min', 20)), float(t.get('tank1_max', 90)))
+                alert_manager.set_threshold(2, float(t.get('tank2_min', 20)), float(t.get('tank2_max', 90)))
+            except Exception:
+                pass
 
-        return jsonify({"success": True, "message": "알림 설정 저장 완료"})
+        return jsonify({'success': True, 'message': '설정이 저장되었습니다'})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/notifications/test', methods=['POST'])
 def send_notification_test():

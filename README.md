@@ -1,8 +1,8 @@
 # 🌱 스마트 관수 시스템 (Smart Irrigation System)
 
 > **Repository**: [spinoza-lab/smart-farm](https://github.com/spinoza-lab/smart-farm)  
-> **최종 업데이트**: 2026-03-03  
-> **버전**: v3.3
+> **최종 업데이트**: 2026-03-04  
+> **버전**: v3.5
 
 라즈베리파이 기반 자동 관수 및 수위 모니터링 시스템
 
@@ -14,7 +14,7 @@
 - 💧 **수위 관리** - 탱크1(물), 탱크2(양액) 실시간 모니터링
 - ⚙️ **정밀 캘리브레이션** - 소수점 3자리 정밀도 (0.001V 단위)
 - 📊 **실시간 대시보드** - WebSocket 기반 실시간 업데이트
-- 🚨 **알림 시스템** - 수위 부족/과다 자동 경고
+- 🚨 **알림 시스템** - 수위 부족/과다 자동 경고 (쿨다운 5분)
 - 📈 **데이터 로깅** - CSV 형식 자동 저장 (탱크 수위 + 관수 이력)
 - 🌱 **12구역 자동 관수** - 토양 수분 센서 기반 수동/자동 모드
 - 🗓 **루틴 스케줄러** - 날짜/시간 기반 반복 관수 루틴 + 수분 체크 옵션
@@ -24,6 +24,7 @@
 - 🔧 **systemd 자동 시작** - 부팅 시 자동 실행 및 로그 관리
 - 📊 **데이터 분석 페이지** - 탱크 수위 트렌드, 관수 효율, 구역별 통계, 줌/팬 차트
 - 🤖 **텔레그램 알림 봇** - 서버 시작·관수 시작/완료·수위 경고 자동 알림 + 원격 명령어 제어
+- 🛡️ **알림 설정 안정성** - notifications.json 손상 방지, 토큰 보호, 원자적 파일 저장 (v3.5)
 
 ---
 
@@ -69,19 +70,19 @@ smart_farm/
 │   ├── sensor_monitor.py      # 센서 모니터링 (핵심)
 │   ├── data_logger.py         # CSV 데이터 저장
 │   ├── alert_manager.py       # 알림 관리
-│   └── telegram_notifier.py   # 텔레그램 알림 봇 (v3.3 신규)
+│   └── telegram_notifier.py   # 텔레그램 알림 봇 (v3.3 신규, v3.5 메뉴 개선)
 │
 ├── web/                   # 웹 인터페이스
-│   ├── app.py             # Flask 서버
+│   ├── app.py             # Flask 서버 (v3.5 알림 설정 안정성 강화)
 │   ├── templates/         # HTML 템플릿
 │   │   ├── index.html         # 대시보드 (관수 상태 카드 포함)
-│   │   ├── settings.html      # 설정 페이지 (스케줄/루틴 관리)
+│   │   ├── settings.html      # 설정 페이지 (v3.5 텔레그램 버튼 메뉴 설명 동기화)
 │   │   └── irrigation.html    # 관수 제어 페이지 (수동/자동)
 │   └── static/            # CSS, JS, 파비콘
 │       ├── css/style.css
 │       ├── js/
 │       │   ├── dashboard.js   # 대시보드 (관수 상태 실시간)
-│       │   ├── settings.js    # 스케줄/루틴 CRUD UI
+│       │   ├── settings.js    # 스케줄/루틴 CRUD UI (v3.5 알림 POST 패턴 수정)
 │       │   ├── irrigation.js  # 관수 제어 클라이언트
 │       │   └── font-utils.js  # 전역 폰트 크기 관리 (v3.3 신규)
 │       └── favicon.svg
@@ -98,7 +99,7 @@ smart_farm/
     ├── sensor_calibration.json  # 탱크 센서 캘리브레이션
     ├── soil_sensors.json        # 토양 센서 / 관수 설정
     ├── schedules.json           # 스케줄/루틴 목록
-    └── notifications.json       # 텔레그램 알림 설정 (v3.3 신규)
+    └── notifications.json       # 텔레그램 알림 설정 (v3.3 신규, v3.5 thresholds 추가)
 ```
 
 ---
@@ -157,6 +158,12 @@ cat > config/notifications.json << 'EOF'
     "water_level_low": true,
     "water_level_high": true,
     "sensor_error": true
+  },
+  "thresholds": {
+    "tank1_min": 20,
+    "tank1_max": 90,
+    "tank2_min": 20,
+    "tank2_max": 90
   }
 }
 EOF
@@ -221,7 +228,7 @@ VS Code에서 `Remote - SSH` 익스텐션 설치 후 `smart-farm-pi` 로 접속,
 
 ---
 
-## 🤖 텔레그램 알림 봇 (v3.3)
+## 🤖 텔레그램 알림 봇 (v3.3~v3.5)
 
 ### 자동 알림
 
@@ -229,32 +236,46 @@ VS Code에서 `Remote - SSH` 익스텐션 설치 후 `smart-farm-pi` 로 접속,
 
 | 이벤트 | 메시지 예시 |
 |--------|------------|
-| 서버 시작 | 🟢 **스마트팜 서버 시작** / ⏰ 2026-03-03 13:32:27 |
+| 서버 시작 | 🟢 **스마트팜 서버 시작** / ⏰ 2026-03-04 09:00:00 |
 | 관수 시작 | 💧 **관수 시작** / 🌿 구역: 1 \| ⏱ 120초 \| 📌 트리거: ⏰ 스케줄 |
 | 관수 완료 | ✅ **관수 완료** / 🌿 구역: 1 \| ⏱ 120초 \| 📌 트리거: ⏰ 스케줄 |
 | 수위 부족 | 🚨 **탱크1 수위 부족!** / 📊 현재: 15.0% (최소: 20%) |
 | 수위 과잉 | ⚠️ **탱크1 수위 과잉!** / 📊 현재: 95.0% (최대: 90%) |
 | 센서 오류 | 🔴 **센서 오류** / 채널0 비정상 전압 |
 
-### 인라인 버튼 메뉴 (v3.4)
+> **알림 쿨다운**: 동일 알림은 5분 이내 중복 전송되지 않습니다.
+
+### 인라인 버튼 메뉴 (v3.5 개선)
 
 텍스트 명령어 대신 **인라인 키보드 버튼**으로 시스템을 제어합니다.
+
+#### 메인 메뉴 버튼 배치
+
+```
+[📊 상태 확인] [📋 오늘 이력]
+[📅 스케줄 목록]
+[💧 관수 시작]  [🛑 관수 중단]
+[🔇 1시간 무음] [🔊 무음 해제]
+```
 
 | 버튼 / 명령어 | 설명 |
 |--------|------|
 | `/start`, `/menu` | 메인 메뉴 열기 |
 | `/help` | 도움말 |
-| 📊 **상태** | 현재 모드·관수 상태·스케줄러 조회 |
-| 📜 **이력** | 오늘 관수 이력 (최근 5건) |
-| 🗓 **스케줄** | 등록된 스케줄/루틴 목록 |
+| 📊 **상태 확인** | 현재 모드·관수 상태·스케줄러 조회 |
+| 📋 **오늘 이력** | 오늘 관수 이력 (최근 5건) |
+| 📅 **스케줄 목록** | 등록된 스케줄/루틴 목록 |
 | 💧 **관수 시작** | 구역 선택(1~12) → 시간 선택 → 즉시 실행 |
 | 🛑 **관수 중단** | 현재 관수 즉시 중단 (≤1초 반응) |
 | 🔇 **1시간 무음** | 알림 1시간 무음 설정 |
+| 🔊 **무음 해제** | 무음 상태 해제, 알림 즉시 재개 |
 
 > **관수 흐름**: 💧 관수 시작 → 구역 1~12 선택 → 30초/1분/2분/5분/10분/20분 선택  
 > → 즉시 "💧 관수 요청 접수" 응답 후 백그라운드 실행, 완료 시 ✅ 또는 🛑 알림 전송
 
 ### 알림 설정 (`config/notifications.json`)
+
+v3.5부터 `thresholds` 섹션이 추가되었습니다:
 
 ```json
 {
@@ -270,9 +291,22 @@ VS Code에서 `Remote - SSH` 익스텐션 설치 후 `smart-farm-pi` 로 접속,
     "water_level_low": true,
     "water_level_high": true,
     "sensor_error": true
+  },
+  "thresholds": {
+    "tank1_min": 20,
+    "tank1_max": 90,
+    "tank2_min": 20,
+    "tank2_max": 90
   }
 }
 ```
+
+### 알림 설정 안정성 (v3.5)
+
+- **토큰 보호**: `GET /api/notifications/config` 응답에서 token/chat_id를 마스킹하여 GET→POST 루프로 인한 토큰 덮어쓰기 방지
+- **원자적 파일 저장**: 임시 파일에 쓴 후 rename으로 교체 — 저장 도중 서버 오류가 나도 파일 손상 없음
+- **메모리 우선 병합**: POST 요청에 telegram 섹션이 없으면 메모리(실행 중인 `telegram_notifier`)의 값을 유지
+- **손상 복구**: 서버 시작 시 `notifications.json`이 없거나 빈 파일이면 기본값으로 자동 복원
 
 ---
 
@@ -434,6 +468,7 @@ IrrigationScheduler
   - 스케줄 추가 모달: 타입 선택, 구역, 관수 시간(분), 시작 시간, 요일/반복주기, 수분체크 옵션
   - 테이블: 타입, 구역, 시작 시간, 관수 시간(분), 조건, 수분체크, 활성, 삭제
 - **수분 임계값**: 12구역 개별 슬라이더 설정
+- **알림 설정** (v3.5): 텔레그램 봇 설정, 알림 항목 토글, 수위 임계값 설정 — 저장 시 토큰 보호
 
 ### 관수 제어 페이지 (`/irrigation`)
 
@@ -498,6 +533,14 @@ IrrigationScheduler
 | GET | `/api/calibration` | 캘리브레이션 설정 조회 |
 | POST | `/api/calibration` | 캘리브레이션 저장 (0~5V 검증) |
 | GET | `/api/calibration/current` | 현재 실시간 센서 전압 |
+
+### 알림 설정 (v3.5)
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET | `/api/notifications/config` | 알림 설정 조회 (token 마스킹) |
+| POST | `/api/notifications/config` | 알림 설정 저장 (메모리 우선 병합) |
+| GET | `/api/notifications/status` | 텔레그램 봇 상태 조회 |
 
 ### 관수 제어
 
@@ -625,24 +668,6 @@ IrrigationScheduler
   - ✅ **[Fix S]** `SoilSensorManager` zones 2~12 minimalmodbus 2.x 필수 속성 누락 수정
   - ✅ **`tools/set_sensor_address.py`** 신규 추가 (RS485 Modbus 주소 설정 CLI)
   - ✅ GitHub Issue [#4](https://github.com/spinoza-lab/smart-farm/issues/4) 해결
-- **2026-03-03 (v3.4)**:
-  - ✅ **[Stage 8 – Telegram 인라인 UI]** 텍스트 명령어 → 인라인 키보드 메뉴로 전면 개편
-    - `MAIN_MENU` (상태·이력·스케줄·관수 4행), `ZONE_MENU` (12구역 그리드), `duration_menu` (30초/1분/2/5/10/20분) 추가
-    - `edit_message()` 메서드 추가 — 새 메시지 발송 대신 기존 메시지를 수정해 채팅창 노이즈 최소화
-    - `_poll_loop`이 `callback_query`와 텍스트(`/start`, `/menu`, `/help`) 동시 처리
-  - ✅ **[Bug-T1]** 관수 중단 시 `❌ 관수 실패` + `🛑 중단됨` 이중 메시지 버그 수정
-    - `notify_irrigation_done(success=False)` → `🛑 관수 중단됨 – 구역N ⏱ N초 경과` 단일 메시지
-    - `_run()` 핸들러 중복 전송 억제
-  - ✅ **[Bug-T2]** 관수 버튼 클릭 시 폴링 스레드 전체 블로킹 버그 수정
-    - `_handle_irrigate_zone` — 즉시 "💧 관수 요청 접수" 응답 후 백그라운드 daemon 스레드 실행
-    - 관수 진행 중에도 상태 조회·중단 버튼 즉시 응답
-  - ✅ **[Bug-T3]** 웹 UI `/api/irrigation/stop` 이 `_stop_requested` 플래그 미설정 → 중단 지연 버그 수정
-    - `app.py` stop 라우트에 `auto_irrigation.stop_irrigation()` 호출 추가
-    - 웹 UI 긴급 정지 1초 이내 즉시 반영
-  - ✅ **[auto_controller]** `irrigate_zone()` 단일 `time.sleep` → 1초 루프 + `_stop_requested` 플래그 체크
-    - `stop_irrigation()` 메서드 신규 추가
-    - `actual_duration` 실제 경과 시간 기록, 결과 dict에 `duration`·`success` 포함
-
 - **2026-03-03 (v3.3)** `6005970` `ec64bdf` `b3185e8`:
   - ✅ **[Bug-M1]** 서버 시작 시 스케줄러 미시작 수정 (모드 기본값 `manual` → `auto`)
   - ✅ **[Bug-M2]** `auto` 모드 선택 시 `scheduler.stop()` 즉시 호출되는 버그 수정
@@ -661,6 +686,41 @@ IrrigationScheduler
   - ✅ **[성능]** `CHECK_INTERVAL` 30초 → 10초 단축 (구역 간 전환 딜레이 개선)
   - ✅ **[개발환경]** VS Code Remote-SSH 설정 (맥북 → 라즈베리파이 직접 개발)
   - ✅ 주말(2/27~3/2) 7회 미실행 확인 및 전체 원인 규명 완료
+- **2026-03-03 (v3.4)**:
+  - ✅ **[Stage 8 – Telegram 인라인 UI]** 텍스트 명령어 → 인라인 키보드 메뉴로 전면 개편
+    - `MAIN_MENU` (상태·이력·스케줄·관수 4행), `ZONE_MENU` (12구역 그리드), `duration_menu` (30초/1분/2/5/10/20분) 추가
+    - `edit_message()` 메서드 추가 — 새 메시지 발송 대신 기존 메시지를 수정해 채팅창 노이즈 최소화
+    - `_poll_loop`이 `callback_query`와 텍스트(`/start`, `/menu`, `/help`) 동시 처리
+  - ✅ **[Bug-T1]** 관수 중단 시 `❌ 관수 실패` + `🛑 중단됨` 이중 메시지 버그 수정
+    - `notify_irrigation_done(success=False)` → `🛑 관수 중단됨 – 구역N ⏱ N초 경과` 단일 메시지
+    - `_run()` 핸들러 중복 전송 억제
+  - ✅ **[Bug-T2]** 관수 버튼 클릭 시 폴링 스레드 전체 블로킹 버그 수정
+    - `_handle_irrigate_zone` — 즉시 "💧 관수 요청 접수" 응답 후 백그라운드 daemon 스레드 실행
+    - 관수 진행 중에도 상태 조회·중단 버튼 즉시 응답
+  - ✅ **[Bug-T3]** 웹 UI `/api/irrigation/stop` 이 `_stop_requested` 플래그 미설정 → 중단 지연 버그 수정
+    - `app.py` stop 라우트에 `auto_irrigation.stop_irrigation()` 호출 추가
+    - 웹 UI 긴급 정지 1초 이내 즉시 반영
+  - ✅ **[auto_controller]** `irrigate_zone()` 단일 `time.sleep` → 1초 루프 + `_stop_requested` 플래그 체크
+    - `stop_irrigation()` 메서드 신규 추가
+    - `actual_duration` 실제 경과 시간 기록, 결과 dict에 `duration`·`success` 포함
+- **2026-03-04 (v3.5)**:
+  - ✅ **[Bug-N1]** `NameError: telegram_notifier is not defined` 수정
+    - `web/app.py` 모듈 상단에 `telegram_notifier = None` 전역 선언 추가
+  - ✅ **[Bug-N2]** `notifications.json` 빈 파일/손상 시 `JSONDecodeError` 수정
+    - `get_notification_config`: 빈 파일·파싱 오류 시 기본값으로 자동 복원
+    - `save_notification_config`: 원자적 저장 (임시 파일 → rename) 적용
+  - ✅ **[Bug-N3]** `import json` 누락으로 `save_notification_config` 500 오류 수정
+    - `web/app.py` 상단에 `import json` 추가
+  - ✅ **[Fix-N4]** 설정 저장 시 텔레그램 토큰 덮어쓰기 방지
+    - `get_notification_config` 응답에서 token/chat_id 마스킹
+    - `save_notification_config`: POST에 telegram 섹션 없으면 메모리값 유지
+    - `settings.js`: POST 요청에서 alerts/thresholds만 전송 (telegram 제외)
+  - ✅ **[Fix-N5]** 텔레그램 인라인 메뉴 버튼 배치 개선 (`telegram_notifier.py`)
+    - "현재 상태" → "상태 확인" 이름 변경
+    - 버튼 배치 변경: `[상태 확인][오늘 이력] / [스케줄 목록] / [관수 시작][관수 중단] / [1시간 무음][무음 해제]`
+  - ✅ **[Fix-N6]** `settings.html` 텔레그램 버튼 메뉴 설명을 실제 봇과 동기화
+    - 버튼 이름·배치·아이콘 업데이트 (🔊 → 🔔 무음 해제)
+  - ✅ `notifications.json`에 `thresholds` 섹션 추가 (tank1/tank2 min/max 수위 임계값)
 
 ---
 
@@ -679,12 +739,9 @@ IrrigationScheduler
 - [x] Stage 7.5 — 모드 단순화 + 루틴 스케줄러 + 분 단위 UI (v3.0)
 - [x] Stage 7.6 — API 버그 수정 + 센서 드라이버 안정화 + 유지보수 도구 추가 (v3.1~v3.2)
 - [x] Stage 8 — 텔레그램 알림 봇 (자동 알림 + 명령어 제어) (v3.3)
+- [x] Stage 8.5 — 알림 설정 UI (웹 토글·임계값 저장·토큰 보호) (v3.5)
 
 ### ⏳ 예정된 Stage
-
-#### Stage 8 잔여: 알림 설정 UI
-- [ ] 웹 UI에서 알림 ON/OFF 토글
-- [ ] 알림 임계값 웹 UI 설정
 
 #### Stage 9: 양액 제어 (PWM)
 - [ ] EC 기반 양액 농도 자동 조절
@@ -770,6 +827,40 @@ grep -a "텔레그램\|TelegramNotifier" /home/pi/smart_farm/logs/web.log
 
 # notifications.json 확인
 cat /home/pi/smart_farm/config/notifications.json
+```
+
+### 알림 설정 저장 후 토큰이 사라지는 경우 (v3.5 이전)
+```bash
+# notifications.json 직접 확인
+cat /home/pi/smart_farm/config/notifications.json
+
+# 파일이 비어있거나 token이 없으면 직접 복원
+cat > /home/pi/smart_farm/config/notifications.json << 'JSONEOF'
+{
+  "telegram": {
+    "enabled": true,
+    "token": "YOUR_BOT_TOKEN",
+    "chat_id": "YOUR_CHAT_ID"
+  },
+  "alerts": {
+    "server_start": true,
+    "irrigation_start": true,
+    "irrigation_done": true,
+    "water_level_low": true,
+    "water_level_high": true,
+    "sensor_error": true
+  },
+  "thresholds": {
+    "tank1_min": 20,
+    "tank1_max": 90,
+    "tank2_min": 20,
+    "tank2_max": 90
+  }
+}
+JSONEOF
+# 서버 재시작
+pkill -f 'python3.*app.py' && sleep 2
+nohup python3 web/app.py > logs/web.log 2>&1 &
 ```
 
 ### 관수 시간 단위 문제
