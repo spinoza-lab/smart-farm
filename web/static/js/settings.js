@@ -1225,3 +1225,110 @@ function showMsg(elId, duration = 3000) {
     el.classList.remove('d-none');
     setTimeout(() => el.classList.add('d-none'), duration);
 }
+
+// ═══════════════════════════════════════════════════════
+// v3.6: 알림 설정 탭 초기화 + cooldown UI
+// ═══════════════════════════════════════════════════════
+(function () {
+    const _alertsTab = document.querySelector('button[data-bs-target="#alerts"]');
+    if (_alertsTab) {
+        _alertsTab.addEventListener('shown.bs.tab', function () {
+            loadNotificationConfig();
+            loadBotStatus();
+        });
+    }
+    // URL ?tab=alerts 로 직접 진입한 경우
+    document.addEventListener('DOMContentLoaded', function () {
+        if (document.querySelector('#alerts.show.active')) {
+            loadNotificationConfig();
+            loadBotStatus();
+        }
+    });
+})();
+
+function loadNotificationConfig() {
+    fetch('/api/notifications/config')
+        .then(r => r.json())
+        .then(data => {
+            // ① 알림 토글
+            const alertMap = {
+                server_start:      'alert_server_start',
+                irrigation_start:  'alert_irrigation_start',
+                irrigation_done:   'alert_irrigation_done',
+                water_level_low:   'alert_water_level_low',
+                water_level_high:  'alert_water_level_high',
+                sensor_error:      'alert_sensor_error',
+            };
+            const alerts = data.alerts || {};
+            Object.entries(alertMap).forEach(([key, elId]) => {
+                const el = document.getElementById(elId);
+                if (el) el.checked = (alerts[key] !== false);
+            });
+            // ② 수위 임계값
+            const thr = data.thresholds || {};
+            [['tank1Min','tank1MinVal', thr.tank1_min, 20],
+             ['tank1Max','tank1MaxVal', thr.tank1_max, 90],
+             ['tank2Min','tank2MinVal', thr.tank2_min, 20],
+             ['tank2Max','tank2MaxVal', thr.tank2_max, 90]
+            ].forEach(([inId, lblId, val, def]) => {
+                const el = document.getElementById(inId);
+                const lb = document.getElementById(lblId);
+                const v  = (val != null) ? val : def;
+                if (el) el.value = v;
+                if (lb) lb.textContent = v;
+            });
+            // ③ 쿨다운
+            const cd = data.cooldown_seconds ?? 300;
+            updateCooldownLabel(cd);
+        })
+        .catch(e => console.error('알림 설정 로드 실패:', e));
+}
+
+// 분 → 총 초
+function _getCooldownTotal() {
+    const m = parseInt(document.getElementById('cooldownMin')?.value || 5);
+    return Math.max(60, m * 60);
+}
+// 총 초 → 분 입력 + 배지 동기화
+function updateCooldownLabel(totalSec) {
+    const t   = Math.max(60, parseInt(totalSec));
+    const m   = Math.round(t / 60);
+    const mEl = document.getElementById('cooldownMin');
+    const vEl = document.getElementById('cooldownVal');
+    if (mEl) mEl.value = m;
+    if (vEl) vEl.textContent = t;
+}
+// 분 직접 입력 시
+function syncCooldownFromMin() {
+    const t   = _getCooldownTotal();
+    const vEl = document.getElementById('cooldownVal');
+    if (vEl) vEl.textContent = t;
+}
+// +/- 버튼 (분 단위)
+function adjustCooldown(delta) {
+    const t = Math.max(60, _getCooldownTotal() + delta);
+    updateCooldownLabel(t);
+}
+// 프리셋 버튼
+function setCooldown(sec) {
+    updateCooldownLabel(sec);
+}
+
+function saveCooldownConfig() {
+    const cd = _getCooldownTotal();
+    fetch('/api/notifications/config', {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body:    JSON.stringify({ cooldown_seconds: cd })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            const el = document.getElementById('cooldownSaveMsg');
+            if (el) { el.classList.remove('d-none'); setTimeout(() => el.classList.add('d-none'), 2500); }
+        } else {
+            showAlert('쿨다운 저장 실패: ' + (d.error || d.message), 'danger');
+        }
+    })
+    .catch(e => showAlert('쿨다운 저장 오류: ' + e.message, 'danger'));
+}

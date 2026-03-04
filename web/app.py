@@ -163,21 +163,23 @@ def init_monitoring_system():
             import json as _am_json
             with open('/home/pi/smart_farm/config/notifications.json') as _am_f:
                 _am_cfg = _am_json.load(_am_f)
-            _am_thr = _am_cfg.get('thresholds', {})
-            _t1_min = float(_am_thr.get('tank1_min', 20.0))
-            _t1_max = float(_am_thr.get('tank1_max', 90.0))
-            _t2_min = float(_am_thr.get('tank2_min', 20.0))
-            _t2_max = float(_am_thr.get('tank2_max', 90.0))
-            print(f'[Init] thresholds 로드: 탱크1={_t1_min}~{_t1_max}%, 탱크2={_t2_min}~{_t2_max}%')
+            _am_thr  = _am_cfg.get('thresholds', {})
+            _t1_min  = float(_am_thr.get('tank1_min', 20.0))
+            _t1_max  = float(_am_thr.get('tank1_max', 90.0))
+            _t2_min  = float(_am_thr.get('tank2_min', 20.0))
+            _t2_max  = float(_am_thr.get('tank2_max', 90.0))
+            _cooldown = int(_am_cfg.get('cooldown_seconds', 300))
+            print(f'[Init] thresholds 로드: 탱크1={_t1_min}~{_t1_max}%, 탱크2={_t2_min}~{_t2_max}%, 쿨다운={_cooldown}s')
         except Exception as _am_e:
             print(f'[Init] thresholds 로드 실패 (기본값 사용): {_am_e}')
             _t1_min, _t1_max, _t2_min, _t2_max = 20.0, 90.0, 20.0, 90.0
+            _cooldown = 300
         alert_manager = AlertManager(
             tank1_min=_t1_min,
             tank1_max=_t1_max,
             tank2_min=_t2_min,
             tank2_max=_t2_max,
-            cooldown_seconds=300,
+            cooldown_seconds=_cooldown,
             log_file='/home/pi/smart_farm/logs/alerts.log'
         )
         
@@ -1590,8 +1592,9 @@ def get_notification_config():
                 'token':   '',          # ← 빈 값으로 마스킹
                 'chat_id': '',          # ← 빈 값으로 마스킹
             },
-            'alerts':     cfg.get('alerts',     {}),
-            'thresholds': cfg.get('thresholds', {}),
+            'alerts':          cfg.get('alerts',          {}),
+            'thresholds':      cfg.get('thresholds',      {}),
+            'cooldown_seconds': cfg.get('cooldown_seconds', 300),
         }
         return jsonify(safe)
     except Exception as e:
@@ -1636,7 +1639,8 @@ def save_notification_config():
         merged = {
             'telegram':   tg,
             'alerts':     incoming.get('alerts',     base.get('alerts',     {})),
-            'thresholds': incoming.get('thresholds', base.get('thresholds', {})),
+            'thresholds':       incoming.get('thresholds',       base.get('thresholds',       {})),
+            'cooldown_seconds': incoming.get('cooldown_seconds', base.get('cooldown_seconds', 300)),
         }
 
         # ── STEP 4: 파일 쓰기 (원자적) ──────────────────────────
@@ -1652,6 +1656,13 @@ def save_notification_config():
             try:
                 alert_manager.set_threshold(1, float(t.get('tank1_min', 20)), float(t.get('tank1_max', 90)))
                 alert_manager.set_threshold(2, float(t.get('tank2_min', 20)), float(t.get('tank2_max', 90)))
+            except Exception:
+                pass
+
+        if alert_manager and 'cooldown_seconds' in incoming:
+            try:
+                alert_manager.cooldown_seconds = int(incoming['cooldown_seconds'])
+                print(f'[Save] 쿨다운 즉시 반영: {alert_manager.cooldown_seconds}s')
             except Exception:
                 pass
 

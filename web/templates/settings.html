@@ -853,6 +853,55 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- 쿨다운 설정 카드 (v3.6) -->
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-clock-history"></i> 경고 재발송 쿨다운
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted small mb-3">같은 경고가 이 시간 안에 반복 발송되지 않습니다.</p>
+
+                                <!-- 프리셋 버튼 -->
+                                <div class="d-flex gap-2 mb-3">
+                                    <button class="btn btn-outline-secondary flex-fill"
+                                            onclick="setCooldown(60)">1분</button>
+                                    <button class="btn btn-outline-primary flex-fill"
+                                            onclick="setCooldown(300)">5분</button>
+                                    <button class="btn btn-outline-secondary flex-fill"
+                                            onclick="setCooldown(600)">10분</button>
+                                    <button class="btn btn-outline-secondary flex-fill"
+                                            onclick="setCooldown(1800)">30분</button>
+                                </div>
+
+                                <!-- 직접 입력 -->
+                                <div class="input-group mb-3">
+                                    <button class="btn btn-outline-secondary" type="button"
+                                            onclick="adjustCooldown(-60)">
+                                        <i class="bi bi-dash-lg"></i>
+                                    </button>
+                                    <input type="number" class="form-control text-center fw-bold"
+                                           id="cooldownMin" value="5" min="1" max="30"
+                                           oninput="syncCooldownFromMin()">
+                                    <span class="input-group-text">분</span>
+                                    <button class="btn btn-outline-secondary" type="button"
+                                            onclick="adjustCooldown(60)">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                                <div class="text-center mb-3">
+                                    <span class="badge bg-secondary px-3 py-2">
+                                        = <span id="cooldownVal">300</span>초
+                                    </span>
+                                </div>
+                                <button class="btn btn-primary w-100" onclick="saveCooldownConfig()">
+                                    <i class="bi bi-check-circle"></i> 쿨다운 저장
+                                </button>
+                                <div class="alert alert-success mt-2 mb-0 py-2 d-none" id="cooldownSaveMsg">
+                                    <i class="bi bi-check-circle"></i> 쿨다운이 저장되었습니다.
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- ③ 수위 경고 임계값 -->
