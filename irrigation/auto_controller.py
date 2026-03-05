@@ -479,8 +479,7 @@ class AutoIrrigationController:
                      _sys.modules.get('app'))
             _tn = getattr(_main, 'telegram_notifier', None)
             if _tn:
-                _tn.send(f'🚨 [자동관수 오류]
-{message}')
+                _tn.send(f'🚨 [자동관수 오류]\n{message}')
                 self._last_sensor_alert_time = now
                 print(f'📨 센서 오류 알림 전송 완료 (다음 알림: {cooldown // 60}분 후)')
             else:

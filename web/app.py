@@ -62,7 +62,8 @@ def periodic_data_sender():
     global monitoring_active
     
     print("🔄 periodic_data_sender 스레드 시작")
-    
+    consecutive_errors = 0   # 연속 오류 카운터 (BUG-5)
+
     while monitoring_active:
         try:
             if sensor_monitor:
@@ -129,15 +130,68 @@ def periodic_data_sender():
                 
                 # print(f"📡 웹으로 데이터 전송: 탱크1={status['tank1_level']:.1f}%, 탱크2={status['tank2_level']:.1f}%")  # 디버그용
         
+            consecutive_errors = 0   # 성공 시 카운터 리셋
+
         except Exception as e:
-            print(f"❌ 주기적 데이터 전송 오류: {e}")
+            consecutive_errors += 1
+            print(f"❌ 주기적 데이터 전송 오류 ({consecutive_errors}회 연속): {e}")
             import traceback
             traceback.print_exc()
-        
-        # 10초 대기
-        time.sleep(10)
-    
+
+            # 연속 10회 오류 시 텔레그램 CRITICAL 알림 (BUG-5)
+            if consecutive_errors == 10:
+                try:
+                    if telegram_notifier:
+                        telegram_notifier.send(
+                            f'🚨 [시스템 경고]\nperiodic_data_sender 10회 연속 오류\n대시보드 업데이트가 중단됐을 수 있습니다.\n마지막 오류: {e}'
+                        )
+                except Exception:
+                    pass
+
+        # 10초 대기 (try 안에서 처리 — 예외로 루프 탈출 방지)
+        try:
+            time.sleep(10)
+        except Exception:
+            pass
+
     print("⏹️  periodic_data_sender 스레드 종료")
+
+
+
+def _start_periodic_sender():
+    """periodic_data_sender 스레드 생성 및 시작 (BUG-5 watchdog용 헬퍼)"""
+    global monitoring_thread
+    t = threading.Thread(target=periodic_data_sender, daemon=True, name="PeriodicSender")
+    t.start()
+    monitoring_thread = t
+    print("🔄 periodic_data_sender 스레드 (재)시작됨")
+    return t
+
+
+def _watchdog_loop():
+    """periodic_data_sender 스레드 감시 및 자동 재시작 (BUG-5)"""
+    global monitoring_active, monitoring_thread
+    print("🐕 watchdog 스레드 시작")
+
+    while monitoring_active:
+        time.sleep(30)   # 30초마다 체크
+
+        if not monitoring_active:
+            break
+
+        if monitoring_thread is None or not monitoring_thread.is_alive():
+            if monitoring_active:   # 정상 종료(monitoring_active=False)가 아닌 경우만
+                print("⚠️  [watchdog] periodic_data_sender 스레드가 죽어 있음 → 재시작")
+                try:
+                    if telegram_notifier:
+                        telegram_notifier.send(
+                            '⚠️ [시스템 복구]\nperiodic_data_sender 스레드가 종료돼 재시작했습니다.\n대시보드 실시간 업데이트가 복구됩니다.'
+                        )
+                except Exception:
+                    pass
+                _start_periodic_sender()
+
+    print("🐕 watchdog 스레드 종료")
 
 def init_monitoring_system():
     """모니터링 시스템 초기화"""
@@ -260,9 +314,13 @@ def init_monitoring_system():
         # 🔥 서버 시작 시 모니터링 자동 시작
         global monitoring_active, monitoring_thread
         monitoring_active = True
-        monitoring_thread = threading.Thread(target=periodic_data_sender, daemon=True)
-        monitoring_thread.start()
+        _start_periodic_sender()   # BUG-5: 헬퍼 함수로 시작
+
+        # BUG-5: watchdog 스레드 시작 (스레드 죽으면 자동 재시작)
+        _watchdog_thread = threading.Thread(target=_watchdog_loop, daemon=True, name="SenderWatchdog")
+        _watchdog_thread.start()
         print("🚀 모니터링 자동 시작됨 (서버 시작 시)")
+        print("🐕 watchdog 스레드 시작됨")
         
         return True
         
