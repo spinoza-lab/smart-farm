@@ -1765,6 +1765,38 @@ def send_notification_test():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ============================================================
+# 🔄 시스템 재시작 API (Stage 8.8)
+# ============================================================
+
+@app.route('/api/system/restart', methods=['POST'])
+def api_system_restart():
+    """서버(smart-farm.service) 재시작 요청"""
+    import subprocess, threading
+
+    # 재시작 전 텔레그램 알림
+    try:
+        if telegram_notifier:
+            telegram_notifier.send(
+                "🔄 [서버 재시작]\n"
+                "웹 UI에서 서버 재시작을 요청했습니다.\n"
+                "약 10초 후 자동으로 재연결됩니다."
+            )
+    except Exception:
+        pass
+
+    def _do_restart():
+        import time as _t
+        _t.sleep(2)   # 응답을 클라이언트가 받을 때까지 대기
+        subprocess.run(
+            ["sudo", "systemctl", "restart", "smart-farm.service"],
+            check=False
+        )
+
+    threading.Thread(target=_do_restart, daemon=True).start()
+    return jsonify({"success": True, "message": "서버 재시작 요청 완료. 약 10초 후 새로고침하세요."})
+
 if __name__ == '__main__':
     print("=" * 60)
     print("🌐 스마트 관수 시스템 웹 대시보드 v2")
