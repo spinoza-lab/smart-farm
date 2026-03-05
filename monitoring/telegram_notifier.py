@@ -330,6 +330,8 @@ class TelegramNotifier:
         self._controller = controller
         if self._polling:
             return
+        # 재시작 후 이전 명령 재처리 방지 (무한루프 방지)
+        self._init_offset()
         self._polling = True
         self._poll_thread = threading.Thread(
             target=self._poll_loop, daemon=True, name="TelegramPoller"
@@ -339,6 +341,28 @@ class TelegramNotifier:
 
     def stop_polling(self):
         self._polling = False
+
+    def _init_offset(self):
+        """폴링 시작 시 최신 update_id 로 offset 초기화.
+        서비스 재시작 후 이전 /restart 명령이 재처리되는
+        무한루프를 방지한다."""
+        try:
+            url = TELEGRAM_API.format(token=self.token, method="getUpdates")
+            resp = requests.get(
+                url,
+                params={"offset": -1, "timeout": 1},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                results = resp.json().get("result", [])
+                if results:
+                    self._last_update = results[-1]["update_id"]
+                    print(f"[Telegram] offset 초기화: {self._last_update}")
+                else:
+                    print("[Telegram] offset 초기화: 이전 메시지 없음")
+        except Exception as e:
+            print(f"[Telegram] offset 초기화 실패 (무시): {e}")
+
 
     def get_status(self) -> dict:
         """봇 상태 딕셔너리 반환 (app.py /api/notifications/status 용)"""
