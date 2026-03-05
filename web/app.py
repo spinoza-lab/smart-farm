@@ -1659,12 +1659,18 @@ def save_notification_config():
             except Exception:
                 pass
 
-        if alert_manager and 'cooldown_seconds' in incoming:
+        # ── BUG-2 fix: incoming 유무와 무관하게 merged 값으로 항상 동기화
+        #   (alerts만 저장하거나 thresholds만 저장하는 부분 업데이트 시에도 반영)
+        if alert_manager:
             try:
-                alert_manager.cooldown_seconds = int(incoming['cooldown_seconds'])
-                print(f'[Save] 쿨다운 즉시 반영: {alert_manager.cooldown_seconds}s')
-            except Exception:
-                pass
+                new_cooldown = int(merged.get('cooldown_seconds', 300))
+                if alert_manager.cooldown_seconds != new_cooldown:
+                    print(f'[Save] 쿨다운 변경: {alert_manager.cooldown_seconds}s → {new_cooldown}s')
+                    alert_manager.cooldown_seconds = new_cooldown
+                else:
+                    print(f'[Save] 쿨다운 유지: {new_cooldown}s (변경 없음)')
+            except Exception as _ce:
+                print(f'[Save] 쿨다운 반영 실패: {_ce}')
 
         return jsonify({'success': True, 'message': '설정이 저장되었습니다'})
     except Exception as e:

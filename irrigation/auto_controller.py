@@ -467,7 +467,7 @@ class AutoIrrigationController:
                      _sys.modules.get('app'))
             _tn = getattr(_main, 'telegram_notifier', None)
             if _tn:
-                _tn.send_message(f'🚨 [자동관수 오류]\n{message}')
+                _tn.send(f'🚨 [자동관수 오류]\n{message}')
         except Exception as e:
             print(f'⚠️  텔레그램 알림 실패: {e}')
 
