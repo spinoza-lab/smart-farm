@@ -457,6 +457,10 @@ class TelegramNotifier:
                     force=True,
                     buttons=MAIN_MENU
                 )
+            elif cmd == "/status":
+                self._send_status(cid)
+            elif cmd == "/restart":
+                self._handle_restart(cid)
 
     # ── 버튼 핸들러 ───────────────────────────────────────────────────
     def _handle_status(self, chat_id: str, message_id: int):
@@ -627,3 +631,61 @@ class TelegramNotifier:
                 self.send(f"⚠️ 관수 오류: {e}", force=True)
 
         threading.Thread(target=_run, daemon=True, name=f"Irrigate-Z{zone_id}").start()
+    def _send_status(self, chat_id: str):
+        """/status 텍스트 명령 응답 — 새 메시지로 상태 전송 (BUG-8.7)"""
+        try:
+            if self._controller:
+                s = self._controller.get_status()
+                mode = s.get("mode") or s.get("irrigation_mode") or "알 수 없음"
+                is_irr = s.get("is_irrigating", False)
+                is_run = s.get("is_running", False)
+            else:
+                r = requests.get("http://127.0.0.1:5000/api/irrigation/status", timeout=3)
+                d = r.json()
+                mode = d.get("mode") or d.get("irrigation_mode") or "알 수 없음"
+                is_irr = d.get("is_irrigating", False)
+                is_run = d.get("is_running", False)
+
+            irr_str = "🚿 관수 중" if is_irr else "💤 대기 중"
+            run_str = "✅ 실행 중" if is_run else "⛔ 중지"
+
+            mute_str = ""
+            rem = self._mute_remaining()
+            if rem:
+                mute_str = f"\n🔇 무음: {rem} 남음"
+
+            now = datetime.now().strftime("%H:%M:%S")
+            self.send(
+                f"📊 <b>스마트팜 현재 상태</b> ({now})\n\n"
+                f"🔧 모드: <b>{mode}</b>\n"
+                f"💧 관수: {irr_str}\n"
+                f"⏰ 스케줄러: {run_str}{mute_str}",
+                force=True,
+                buttons=MAIN_MENU
+            )
+        except Exception as e:
+            self.send(f"⚠️ 상태 조회 실패: {e}", force=True)
+
+    def _handle_restart(self, chat_id: str):
+        """/restart 텍스트 명령 — systemctl restart 실행 (BUG-8.7)"""
+        import subprocess
+        self.send(
+            "🔄 <b>서버 재시작 요청 수신</b>\n"
+            "3초 후 smart-farm.service를 재시작합니다.\n"
+            "재시작 완료 후 서버 시작 알림이 전송됩니다.",
+            force=True
+        )
+
+        def _do_restart():
+            time.sleep(3)
+            try:
+                subprocess.Popen(
+                    ["sudo", "systemctl", "restart", "smart-farm.service"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            except Exception as e:
+                self.send(f"⚠️ 재시작 실패: {e}", force=True)
+
+        threading.Thread(target=_do_restart, daemon=True, name="RestartService").start()
+
