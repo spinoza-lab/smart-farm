@@ -15,8 +15,13 @@ from datetime import datetime
 from typing import Optional, Callable, Dict, List
 import logging
 
+from pathlib import Path
+
+# BUG-7: 설치 경로 동적 계산 (하드코딩 제거)
+_BASE_DIR = Path(__file__).resolve().parent.parent
+
 import sys
-sys.path.append('/home/pi/smart_farm')
+sys.path.append(str(_BASE_DIR))
 
 from hardware.sensor_reader import SensorReader
 from hardware.rtc_manager import RTCManager

@@ -14,9 +14,13 @@ DataLogger 모듈
 
 import csv
 import os
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 import threading
+
+# BUG-7: 설치 경로 동적 계산 (하드코딩 제거)
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class DataLogger:
@@ -27,7 +31,7 @@ class DataLogger:
     날짜별로 파일을 자동 분리하여 관리
     """
     
-    def __init__(self, log_dir: str = "/home/pi/smart_farm/logs"):
+    def __init__(self, log_dir: str = str(_BASE_DIR / 'logs')):
         """
         DataLogger 초기화
         

@@ -28,6 +28,10 @@ import serial
 import time
 import json
 import os
+from pathlib import Path
+
+# BUG-7: 설치 경로 동적 계산 (하드코딩 제거)
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
 try:
     import RPi.GPIO as GPIO
@@ -164,7 +168,7 @@ class SoilSensor:
 class SoilSensorManager:
     """12개 구역 토양 센서 통합 관리"""
 
-    CONFIG_PATH = '/home/pi/smart_farm/config/soil_sensors.json'
+    CONFIG_PATH = str(_BASE_DIR / 'config/soil_sensors.json')
 
     def __init__(self, config_path=None):
         self.config_path = config_path or self.CONFIG_PATH

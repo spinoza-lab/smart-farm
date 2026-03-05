@@ -8,6 +8,9 @@ import json, logging, threading, time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# BUG-7: 설치 경로 동적 계산 (하드코딩 제거)
+_BASE_DIR = Path(__file__).resolve().parent.parent
+
 logger = logging.getLogger(__name__)
 if not logger.handlers:
     _sh = logging.StreamHandler()
@@ -15,7 +18,7 @@ if not logger.handlers:
     logger.addHandler(_sh)
     logger.setLevel(logging.DEBUG)
 
-SCHEDULES_PATH   = Path("/home/pi/smart_farm/config/schedules.json")
+SCHEDULES_PATH   = _BASE_DIR / 'config/schedules.json'
 GRACE_SECONDS    = 600
 INTERLOCK_WAIT   = 10
 INTERLOCK_TIMEOUT= 3600

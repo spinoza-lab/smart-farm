@@ -12,10 +12,14 @@ from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 import sys
 import os
+from pathlib import Path
 import json
 from datetime import datetime, timedelta
 import threading
 import time
+
+# BUG-7: 설치 경로 동적 계산 (하드코딩 제거)
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
 # 상위 디렉터리의 모듈 import를 위한 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -31,6 +35,14 @@ from monitoring.telegram_notifier import TelegramNotifier
 
 # Flask 앱 초기화
 app = Flask(__name__)
+# 캐시 버스팅: 서버 시작 시 타임스탬프로 JS/CSS 버전 자동 갱신
+import time as _time
+_CACHE_VER = str(int(_time.time()))
+
+@app.context_processor
+def inject_cache_ver():
+    return dict(cache_ver=_CACHE_VER)
+
 app.config['SECRET_KEY'] = 'smart-farm-secret-2026'
 
 # SocketIO 초기화 (실시간 통신)
@@ -209,13 +221,13 @@ def init_monitoring_system():
         
         # DataLogger 초기화
         data_logger = DataLogger(
-            log_dir='/home/pi/smart_farm/logs'
+            log_dir=str(_BASE_DIR / 'logs')
         )
         
         # AlertManager 초기화 (notifications.json 에서 thresholds 로드)
         try:
             import json as _am_json
-            with open('/home/pi/smart_farm/config/notifications.json') as _am_f:
+            with open(str(_BASE_DIR / 'config/notifications.json')) as _am_f:
                 _am_cfg = _am_json.load(_am_f)
             _am_thr  = _am_cfg.get('thresholds', {})
             _t1_min  = float(_am_thr.get('tank1_min', 20.0))
@@ -234,7 +246,7 @@ def init_monitoring_system():
             tank2_min=_t2_min,
             tank2_max=_t2_max,
             cooldown_seconds=_cooldown,
-            log_file='/home/pi/smart_farm/logs/alerts.log'
+            log_file=str(_BASE_DIR / 'logs/alerts.log')
         )
         
         # AlertManager 콜백: 경고를 웹 클라이언트에 푸시
@@ -284,7 +296,7 @@ def init_monitoring_system():
                 global telegram_notifier
                 try:
                     import json as _jn
-                    with open("/home/pi/smart_farm/config/notifications.json") as _f:
+                    with open(str(_BASE_DIR / 'config/notifications.json')) as _f:
                         _nc = _jn.load(_f)
                     _tc = _nc.get("telegram", {})
                     if _tc.get("enabled", False):
@@ -965,7 +977,7 @@ def download_irrigation_history():
     import csv, io
     from flask import Response
 
-    csv_path = '/home/pi/smart_farm/logs/irrigation_history.csv'
+    csv_path = str(_BASE_DIR / 'logs/irrigation_history.csv')
 
     if not os.path.exists(csv_path):
         return jsonify({'error': '관수 이력 파일 없음'}), 404
@@ -1008,7 +1020,7 @@ def download_sensor_data():
     import glob
     from flask import Response
 
-    log_dir   = '/home/pi/smart_farm/logs'
+    log_dir   = str(_BASE_DIR / 'logs')
     date_from = request.args.get('from')   # YYYY-MM-DD
     date_to   = request.args.get('to')
 
@@ -1060,7 +1072,7 @@ def list_download_files():
     """다운로드 가능한 파일 목록 조회"""
     import glob
 
-    log_dir = '/home/pi/smart_farm/logs'
+    log_dir = str(_BASE_DIR / 'logs')
     result  = {'sensor_files': [], 'irrigation_csv': None}
 
     # 센서 CSV 파일 목록
@@ -1113,7 +1125,7 @@ def analytics_sensor_data():
     """분석용 탱크 수위 CSV 데이터 조회 (날짜 필터 + 통계)"""
     import csv, glob, statistics
 
-    log_dir   = '/home/pi/smart_farm/logs'
+    log_dir   = str(_BASE_DIR / 'logs')
     date_from = request.args.get('from')
     date_to   = request.args.get('to')
 
@@ -1173,7 +1185,7 @@ def analytics_irrigation_history():
     """분석용 관수 이력 전체 조회 (날짜 필터)"""
     import csv
 
-    csv_path  = '/home/pi/smart_farm/logs/irrigation_history.csv'
+    csv_path  = str(_BASE_DIR / 'logs/irrigation_history.csv')
     date_from = request.args.get('from')
     date_to   = request.args.get('to')
 
@@ -1211,8 +1223,8 @@ def analytics_irrigation_history():
 # ⚙️  자동 관수 설정 API  (Stage 5.5)
 # ============================================================
 
-SOIL_SENSORS_PATH = '/home/pi/smart_farm/config/soil_sensors.json'
-SCHEDULES_PATH    = '/home/pi/smart_farm/config/schedules.json'
+SOIL_SENSORS_PATH = str(_BASE_DIR / 'config/soil_sensors.json')
+SCHEDULES_PATH    = str(_BASE_DIR / 'config/schedules.json')
 
 def _load_soil_config():
     """soil_sensors.json 로드"""
@@ -1635,8 +1647,8 @@ def get_notification_config():
     try:
         cfg = {}
         try:
-            if os.path.exists('/home/pi/smart_farm/config/notifications.json'):
-                with open('/home/pi/smart_farm/config/notifications.json', 'r', encoding='utf-8') as _f:
+            if os.path.exists(str(_BASE_DIR / 'config/notifications.json')):
+                with open(str(_BASE_DIR / 'config/notifications.json'), 'r', encoding='utf-8') as _f:
                     raw = _f.read().strip()
                     if raw:
                         cfg = json.loads(raw)
@@ -1669,8 +1681,8 @@ def save_notification_config():
         # ── STEP 1: 기존 파일 읽기 (merge base) ──────────────────
         base = {}
         try:
-            if os.path.exists('/home/pi/smart_farm/config/notifications.json'):
-                with open('/home/pi/smart_farm/config/notifications.json', 'r', encoding='utf-8') as _f:
+            if os.path.exists(str(_BASE_DIR / 'config/notifications.json')):
+                with open(str(_BASE_DIR / 'config/notifications.json'), 'r', encoding='utf-8') as _f:
                     raw = _f.read().strip()
                     if raw:
                         base = json.loads(raw)
@@ -1702,10 +1714,10 @@ def save_notification_config():
         }
 
         # ── STEP 4: 파일 쓰기 (원자적) ──────────────────────────
-        tmp_path = '/home/pi/smart_farm/config/notifications.json' + '.tmp'
+        tmp_path = str(_BASE_DIR / 'config/notifications.json') + '.tmp'
         with open(tmp_path, 'w', encoding='utf-8') as f:
             json.dump(merged, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path, '/home/pi/smart_farm/config/notifications.json')
+        os.replace(tmp_path, str(_BASE_DIR / 'config/notifications.json'))
         print(f"[DEBUG SAVE] 저장 완료: {list(merged.keys())}")
 
         # ── STEP 5: AlertManager 임계값 즉시 반영 ────────────────

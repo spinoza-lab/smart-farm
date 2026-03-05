@@ -1,3 +1,11 @@
+#!/bin/bash
+# update_status.sh
+# docs/STATUS.md 를 오늘 작업 내용으로 갱신합니다.
+
+TARGET="/home/pi/smart_farm/docs/STATUS.md"
+mkdir -p /home/pi/smart_farm/docs
+
+cat > "$TARGET" << 'EOF'
 # 📋 Smart Farm 프로젝트 현황 노트
 
 > 최종 업데이트: 2026-03-05
@@ -28,15 +36,10 @@
 |---|---|---|---|
 | BUG-1 | 토양센서 시뮬레이션 fallback 조건부 제어 | ✅ 완료 | irrigation/auto_controller.py, config/soil_sensors.json |
 | BUG-2 | cooldown_seconds 즉시 반영 강화 + send_message 오타 수정 | ✅ 완료 | web/app.py, irrigation/auto_controller.py |
-| BUG-1b | _send_sensor_alert() 쿨다운 추가 (30분, sensor_alert_cooldown) | ✅ 완료 | irrigation/auto_controller.py, config/soil_sensors.json |
-| BUG-5 | periodic_data_sender watchdog 자동 재시작 + SyntaxError 수정 | ✅ 완료 | web/app.py, irrigation/auto_controller.py |
 
 ### Git 커밋 이력 (최근순)
 | 날짜 | 내용 |
 |---|---|
-| 2026-03-05 | fix(BUG-5): periodic_data_sender watchdog 자동 재시작 추가 |
-| 2026-03-05 | fix(BUG-5): periodic_data_sender watchdog 자동 재시작 |
-| 2026-03-05 | fix(BUG-1b): _send_sensor_alert() 쿨다운 추가 (30분) |
 | 2026-03-05 | fix(BUG-2): cooldown_seconds 즉시 반영 강화 + send_message 버그 수정 |
 | 2026-03-05 | fix(BUG-1): 토양센서 시뮬레이션 fallback 조건부 제어 |
 | 2026-03-05 | fix: RTCManager를 시스템 시간 기반으로 변경 |
@@ -90,91 +93,6 @@
 [Init] thresholds 로드: 탱크1=15.0~75.0%, 탱크2=10.0~80.0%, 쿨다운=3600s
    쿨다운: 3600초
 ```
-
----
-
-## ✅ BUG-1b 수정 상세 (2026-03-05)
-
-**파일**: `irrigation/auto_controller.py`, `config/soil_sensors.json`
-
-**문제**: `_send_sensor_alert()`에 쿨다운 없이 `check_interval(300초)` + RS-485 타임아웃(~60초)마다
-텔레그램 알림이 반복 전송 (~6분 간격 무한 반복)
-
-**원인 분석**:
-- `AlertManager.cooldown_seconds` = 3600초 → 수위 경고에만 적용
-- `_send_sensor_alert()` → `_tn.send()` 직접 호출 → AlertManager 쿨다운 우회
-
-**수정 내용**:
-- `__init__`: `self._last_sensor_alert_time = None` 추가
-- `_send_sensor_alert()`: 쿨다운 로직 추가
-  - `irrigation_cfg['sensor_alert_cooldown']` 값 읽기 (기본: 1800초 = 30분)
-  - 마지막 알림 후 쿨다운 미경과 시 텔레그램 전송 생략 (로그만 출력)
-  - 전송 후 `_last_sensor_alert_time` 갱신
-- `soil_sensors.json` > `irrigation` 섹션에 `"sensor_alert_cooldown": 1800` 추가
-
-**동작 변화 요약**:
-| 상황 | 이전 | 이후 |
-|---|---|---|
-| 첫 번째 센서 오류 | 즉시 전송 | 즉시 전송 ✅ |
-| 6분 후 동일 오류 | 또 전송 ❌ | 쿨다운 중 → 생략 ✅ |
-| 30분 후 지속 오류 | 또 전송 ❌ | 재전송 (리마인드) ✅ |
-| 하드웨어 미연결 상태 | 6분마다 스팸 ❌ | 최초 1회 + 30분 주기 ✅ |
-
-**쿨다운 설정 변경 방법**: `soil_sensors.json` > `irrigation` > `sensor_alert_cooldown` 값 수정 후 서비스 재시작
-
----
-
-## ⚙️ 알림 쿨다운 설정 현황 (2026-03-05)
-
-| 알림 종류 | 설정 파일 | 키 | 현재값 |
-|---|---|---|---|
-| 수위 경고 | `config/notifications.json` | `cooldown_seconds` | 3600초 (1시간) |
-| 센서 오류 | `config/soil_sensors.json` | `irrigation.sensor_alert_cooldown` | 1800초 (30분) |
-
-> 💡 하드웨어 미조립 상태에서는 관수 모드를 `manual`로 전환하면 자동 체크 자체가 중단됩니다.
-
----
-
----
-
-## ✅ BUG-5 수정 상세 (2026-03-05)
-
-**파일**: 
-
-**문제**:  스레드가 예외로 종료되면 대시보드 실시간 업데이트가 조용히 멈춤
-- 서비스 자체는 살아있어 systemctl status로 감지 불가
-- 내부 try/except 있으나, 이 try 블록 밖 → 예외 시 루프 탈출 가능
-- 스레드가 죽어도 감지·재시작하는 로직 전혀 없음
-
-**수정 내용**:
-
-**[PATCH 1] periodic_data_sender 강화**
--  카운터 추가 (성공 시 리셋)
-- 을 try/except 안으로 이동 (루프 탈출 방지)
-- 연속 10회 오류 시 텔레그램 CRITICAL 알림 발송
-
-**[PATCH 2]  헬퍼 추가**
-- 스레드 생성·시작·전역 변수 등록 로직 함수화
-- watchdog에서 재시작 시 동일 함수 재사용
-
-**[PATCH 3]  추가**
-- 30초마다  확인
-- 스레드 죽어있으면  호출로 즉시 재시작
-- 재시작 시 텔레그램으로 복구 알림
--  이면 watchdog도 함께 종료
-
-**[PATCH 4]  수정**
--  시작을  헬퍼로 교체
-- watchdog 스레드() 함께 시작
-
-**동작 시나리오**:
-| 상황 | 이전 | 이후 |
-|---|---|---|
-| 스레드 내 예외 | try/except 처리 후 계속 | 동일 + 연속 카운팅 ✅ |
-| time.sleep 중 예외 | 루프 탈출 → 스레드 종료 ❌ | try/except 보호 → 계속 ✅ |
-| 스레드 예기치 않은 종료 | 감지 불가, 재시작 없음 ❌ | watchdog 30초 내 감지 → 재시작 ✅ |
-| 10회 연속 오류 | 조용히 실패 ❌ | 텔레그램 CRITICAL 알림 ✅ |
-| 재시작 시 알림 | 없음 ❌ | 텔레그램 복구 알림 ✅ |
 
 ---
 
@@ -244,7 +162,7 @@
 
 | 우선순위 | ID | 작업 | 예상 시간 |
 |---|---|---|---|
-| ~~⭐⭐⭐~~ | ~~BUG-5~~ | ~~periodic_data_sender 스레드 자동 재시작~~ | ✅ 완료 |
+| ⭐⭐⭐ | BUG-5 | periodic_data_sender 스레드 자동 재시작 | 20분 |
 | ⭐⭐ | - | 캐시 버스팅: JS/CSS 버전 쿼리스트링 자동 추가 | 10분 |
 | ⭐⭐ | - | 웹 UI 서버 재시작 버튼 추가 | 30분 |
 | ⭐ | - | 텔레그램 /restart, /status 명령 추가 | 1시간 |
@@ -288,11 +206,8 @@ sudo journalctl -u smart-farm.service -f
 # 최근 에러만 보기
 sudo journalctl -u smart-farm.service --since "10 min ago" --no-pager | grep -E "ERROR|Error|❌"
 
-# 쿨다운 값 확인 (수위 경고)
+# 쿨다운 값 확인
 cat /home/pi/smart_farm/config/notifications.json | python3 -m json.tool | grep cooldown
-
-# 센서 오류 알림 쿨다운 확인
-python3 -c "import json; cfg=json.load(open('/home/pi/smart_farm/config/soil_sensors.json')); print('sensor_alert_cooldown:', cfg.get('irrigation',{}).get('sensor_alert_cooldown','없음'), '초')"
 
 # 쿨다운 실제 반영 확인 (서비스 시작 로그)
 sudo journalctl -u smart-farm.service --since "5 min ago" --no-pager | grep -E "쿨다운|cooldown"
@@ -313,3 +228,6 @@ cd /home/pi/smart_farm && git log --oneline -8
 ---
 
 _이 파일은 작업 세션 간 컨텍스트 유지를 위한 내부 노트입니다._
+EOF
+
+echo "✅ $TARGET 갱신 완료"

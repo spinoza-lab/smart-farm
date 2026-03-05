@@ -1,3 +1,13 @@
+#!/bin/bash
+# rtc_manager.py를 시스템 시간 기반으로 교체
+# adafruit_ds1307 직접 접근 제거 → datetime.now() 사용
+
+TARGET=/home/pi/smart_farm/hardware/rtc_manager.py
+
+cp $TARGET $TARGET.bak
+echo "✅ 백업 완료: $TARGET.bak"
+
+cat > $TARGET << 'EOF'
 #!/usr/bin/env python3
 """
 rtc_manager.py
@@ -72,14 +82,8 @@ class RTCManager:
         """
         시간 설정 (시스템 시간 모드에서는 무시)
         커널이 부팅 시 RTC에서 자동으로 시스템 시간을 설정함
-        [BUG-3] 이 메서드는 no-op입니다. 커널 드라이버가 RTC 동기화를 담당합니다.
-        호출부에서 제거하거나 무시해도 무방합니다.
         """
-        import logging as _logging
-        _logging.getLogger(__name__).warning(
-            "set_datetime() called but is a no-op: kernel driver handles RTC sync automatically"
-        )
-        print("ℹ️  [BUG-3] set_datetime() 무시 — 커널이 RTC 자동 동기화 담당")
+        print("ℹ️  시스템 시간 모드: set_datetime() 무시 (커널이 자동 동기화)")
 
     def sync_from_system(self):
         """시스템 시간 모드에서는 불필요 (커널이 자동 처리)"""
@@ -154,20 +158,7 @@ class RTCManager:
 
         Args:
             target_time: 목표 시간 (HH:MM 형식)
-
-        [BUG-4] ⚠️ 메인 스레드에서 호출 금지 — Flask 서버가 정지됩니다.
-        반드시 별도 스레드(예: scheduler 스레드)에서만 호출하세요.
-        현재 프로젝트 내 실제 호출부 없음(2026-03-05 확인).
         """
-        import threading as _threading
-        if _threading.current_thread() is _threading.main_thread():
-            import logging as _logging
-            _logging.getLogger(__name__).error(
-                "wait_until() called from MAIN THREAD — this will block Flask! Aborting."
-            )
-            print("❌ [BUG-4] wait_until()을 메인 스레드에서 호출했습니다. 차단 방지를 위해 중단합니다.")
-            return
-
         print(f"⏰ {target_time}까지 대기 중...")
 
         while True:
@@ -238,3 +229,9 @@ if __name__ == "__main__":
         print(f"\n❌ 테스트 실패: {e}")
         import traceback
         traceback.print_exc()
+EOF
+
+echo "✅ rtc_manager.py 교체 완료"
+echo ""
+echo "변경 내용 확인 (앞 10줄):"
+head -15 $TARGET

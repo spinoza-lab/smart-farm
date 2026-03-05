@@ -14,10 +14,14 @@ AlertManager 모듈
 """
 
 import os
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Callable
 from enum import Enum
 import threading
+
+# BUG-7: 설치 경로 동적 계산 (하드코딩 제거)
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class AlertLevel(Enum):
@@ -97,7 +101,7 @@ class AlertManager:
                  tank2_min: float = 20.0,
                  tank2_max: float = 90.0,
                  cooldown_seconds: int = 300,
-                 log_file: Optional[str] = "/home/pi/smart_farm/logs/alerts.log"):
+                 log_file: Optional[str] = str(_BASE_DIR / 'logs/alerts.log')):
         """
         AlertManager 초기화
         

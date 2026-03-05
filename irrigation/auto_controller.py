@@ -14,7 +14,11 @@ import time
 import json
 import threading
 import os
+from pathlib import Path
 from datetime import datetime
+
+# BUG-7: 설치 경로 동적 계산 (하드코딩 제거)
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
 try:
     from hardware.modbus_soil_sensor import SoilSensorManager
@@ -28,9 +32,9 @@ except ImportError:
 class AutoIrrigationController:
     """토양 수분 기반 자동 관수 제어기"""
 
-    CONFIG_PATH = '/home/pi/smart_farm/config/soil_sensors.json'
-    LOG_PATH    = '/home/pi/smart_farm/logs/irrigation.log'
-    CSV_PATH    = '/home/pi/smart_farm/logs/irrigation_history.csv'
+    CONFIG_PATH = str(_BASE_DIR / 'config/soil_sensors.json')
+    LOG_PATH    = str(_BASE_DIR / 'logs/irrigation.log')
+    CSV_PATH    = str(_BASE_DIR / 'logs/irrigation_history.csv')
 
     def __init__(self, sensor_manager=None, relay_controller=None, config_path=None):
         self.config_path      = config_path or self.CONFIG_PATH

@@ -9,10 +9,14 @@ import time
 import requests
 import json
 import os
+from pathlib import Path
 from datetime import datetime
 
-CONFIG_PATH  = "/home/pi/smart_farm/config/notifications.json"
-SCHED_PATH   = "/home/pi/smart_farm/config/schedules.json"
+# BUG-7: 설치 경로 동적 계산 (하드코딩 제거)
+_BASE_DIR = Path(__file__).resolve().parent.parent
+
+CONFIG_PATH  = str(_BASE_DIR / 'config/notifications.json')
+SCHED_PATH   = str(_BASE_DIR / 'config/schedules.json')
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 
 # ─────────────────────────────────────────────────────────────────────
