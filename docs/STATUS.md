@@ -30,11 +30,17 @@
 | BUG-2 | cooldown_seconds 즉시 반영 강화 + send_message 오타 수정 | ✅ 완료 | web/app.py, irrigation/auto_controller.py |
 | BUG-1b | _send_sensor_alert() 쿨다운 추가 (30분, sensor_alert_cooldown) | ✅ 완료 | irrigation/auto_controller.py, config/soil_sensors.json |
 | BUG-5 | periodic_data_sender watchdog 자동 재시작 + SyntaxError 수정 | ✅ 완료 | web/app.py, irrigation/auto_controller.py |
+| BUG-3 | rtc_manager.set_datetime() no-op 경고 로그 추가 | ✅ 완료 | hardware/rtc_manager.py |
+| BUG-4 | rtc_manager.wait_until() 메인스레드 가드 추가 | ✅ 완료 | hardware/rtc_manager.py |
+| BUG-6 | 텔레그램 중복 알림 — 확인 결과 실제 중복 없음 | ✅ 해소 | - |
+| BUG-7 | 하드코딩 절대경로 → _BASE_DIR 동적 경로 (8파일 27곳) | ✅ 완료 | 8개 파일 전체 |
+| Cache | JS/CSS 캐시버스팅 context_processor 추가 | ✅ 완료 | web/app.py, templates/*.html |
 
 ### Git 커밋 이력 (최근순)
 | 날짜 | 내용 |
 |---|---|
 | 2026-03-05 | fix(BUG-5): periodic_data_sender watchdog 자동 재시작 추가 |
+| 2026-03-05 | fix(v3.6): BUG-3~7 + 캐시버스팅 + 경로 동적화 |
 | 2026-03-05 | fix(BUG-5): periodic_data_sender watchdog 자동 재시작 |
 | 2026-03-05 | fix(BUG-1b): _send_sensor_alert() 쿨다운 추가 (30분) |
 | 2026-03-05 | fix(BUG-2): cooldown_seconds 즉시 반영 강화 + send_message 버그 수정 |
@@ -178,7 +184,7 @@
 
 ---
 
-## 🔴 발견된 잠재 버그 (미수정)
+## ✅ 발견된 잠재 버그 (전체 완료 2026-03-05)
 
 ### BUG-3 | rtc_manager.py — set_datetime() 무동작 (낮음)
 - **위치**: `hardware/rtc_manager.py`
