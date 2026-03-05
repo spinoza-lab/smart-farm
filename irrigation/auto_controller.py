@@ -56,6 +56,8 @@ class AutoIrrigationController:
         self.irrigation_history = []
         self.last_sensor_data   = {}
         self.alert_callback     = None
+        # 센서 오류 알림 쿨다운 추적 (BUG-1b)
+        self._last_sensor_alert_time = None
 
         # 관수 진행 시간 추적
         self._irr_start_time = None   # datetime
@@ -459,7 +461,17 @@ class AutoIrrigationController:
         print(f"📝 {line.strip()}")
 
     def _send_sensor_alert(self, message):
-        """토양센서 오류를 텔레그램으로 알림"""
+        """토양센서 오류를 텔레그램으로 알림 (쿨다운 적용, BUG-1b)"""
+        now = datetime.now()
+        cooldown = self.irrigation_cfg.get('sensor_alert_cooldown', 1800)  # 기본 30분
+
+        if self._last_sensor_alert_time is not None:
+            elapsed = (now - self._last_sensor_alert_time).total_seconds()
+            if elapsed < cooldown:
+                remaining = int(cooldown - elapsed)
+                print(f'⏸️  센서 오류 알림 쿨다운 중 ({remaining}초 남음) - 텔레그램 전송 생략')
+                return
+
         try:
             import sys as _sys
             _main = (_sys.modules.get('__main__') or
@@ -467,10 +479,15 @@ class AutoIrrigationController:
                      _sys.modules.get('app'))
             _tn = getattr(_main, 'telegram_notifier', None)
             if _tn:
-                _tn.send(f'🚨 [자동관수 오류]\n{message}')
+                _tn.send(f'🚨 [자동관수 오류]
+{message}')
+                self._last_sensor_alert_time = now
+                print(f'📨 센서 오류 알림 전송 완료 (다음 알림: {cooldown // 60}분 후)')
+            else:
+                # 텔레그램 없어도 쿨다운 타이머는 시작
+                self._last_sensor_alert_time = now
         except Exception as e:
             print(f'⚠️  텔레그램 알림 실패: {e}')
-
     def _simulate_sensor_data(self):
         import random
         data = {}

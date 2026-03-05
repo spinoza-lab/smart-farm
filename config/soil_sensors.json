@@ -100,6 +100,7 @@
     "check_interval": 300,
     "max_zones_simultaneous": 1,
     "mode": "auto",
-    "simulation_mode": false
+    "simulation_mode": false,
+    "sensor_alert_cooldown": 1800
   }
 }
