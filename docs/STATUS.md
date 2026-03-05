@@ -28,10 +28,12 @@
 |---|---|---|---|
 | BUG-1 | 토양센서 시뮬레이션 fallback 조건부 제어 | ✅ 완료 | irrigation/auto_controller.py, config/soil_sensors.json |
 | BUG-2 | cooldown_seconds 즉시 반영 강화 + send_message 오타 수정 | ✅ 완료 | web/app.py, irrigation/auto_controller.py |
+| BUG-1b | _send_sensor_alert() 쿨다운 추가 (30분, sensor_alert_cooldown) | ✅ 완료 | irrigation/auto_controller.py, config/soil_sensors.json |
 
 ### Git 커밋 이력 (최근순)
 | 날짜 | 내용 |
 |---|---|
+| 2026-03-05 | fix(BUG-1b): _send_sensor_alert() 쿨다운 추가 (30분) |
 | 2026-03-05 | fix(BUG-2): cooldown_seconds 즉시 반영 강화 + send_message 버그 수정 |
 | 2026-03-05 | fix(BUG-1): 토양센서 시뮬레이션 fallback 조건부 제어 |
 | 2026-03-05 | fix: RTCManager를 시스템 시간 기반으로 변경 |
@@ -85,6 +87,48 @@
 [Init] thresholds 로드: 탱크1=15.0~75.0%, 탱크2=10.0~80.0%, 쿨다운=3600s
    쿨다운: 3600초
 ```
+
+---
+
+## ✅ BUG-1b 수정 상세 (2026-03-05)
+
+**파일**: `irrigation/auto_controller.py`, `config/soil_sensors.json`
+
+**문제**: `_send_sensor_alert()`에 쿨다운 없이 `check_interval(300초)` + RS-485 타임아웃(~60초)마다
+텔레그램 알림이 반복 전송 (~6분 간격 무한 반복)
+
+**원인 분석**:
+- `AlertManager.cooldown_seconds` = 3600초 → 수위 경고에만 적용
+- `_send_sensor_alert()` → `_tn.send()` 직접 호출 → AlertManager 쿨다운 우회
+
+**수정 내용**:
+- `__init__`: `self._last_sensor_alert_time = None` 추가
+- `_send_sensor_alert()`: 쿨다운 로직 추가
+  - `irrigation_cfg['sensor_alert_cooldown']` 값 읽기 (기본: 1800초 = 30분)
+  - 마지막 알림 후 쿨다운 미경과 시 텔레그램 전송 생략 (로그만 출력)
+  - 전송 후 `_last_sensor_alert_time` 갱신
+- `soil_sensors.json` > `irrigation` 섹션에 `"sensor_alert_cooldown": 1800` 추가
+
+**동작 변화 요약**:
+| 상황 | 이전 | 이후 |
+|---|---|---|
+| 첫 번째 센서 오류 | 즉시 전송 | 즉시 전송 ✅ |
+| 6분 후 동일 오류 | 또 전송 ❌ | 쿨다운 중 → 생략 ✅ |
+| 30분 후 지속 오류 | 또 전송 ❌ | 재전송 (리마인드) ✅ |
+| 하드웨어 미연결 상태 | 6분마다 스팸 ❌ | 최초 1회 + 30분 주기 ✅ |
+
+**쿨다운 설정 변경 방법**: `soil_sensors.json` > `irrigation` > `sensor_alert_cooldown` 값 수정 후 서비스 재시작
+
+---
+
+## ⚙️ 알림 쿨다운 설정 현황 (2026-03-05)
+
+| 알림 종류 | 설정 파일 | 키 | 현재값 |
+|---|---|---|---|
+| 수위 경고 | `config/notifications.json` | `cooldown_seconds` | 3600초 (1시간) |
+| 센서 오류 | `config/soil_sensors.json` | `irrigation.sensor_alert_cooldown` | 1800초 (30분) |
+
+> 💡 하드웨어 미조립 상태에서는 관수 모드를 `manual`로 전환하면 자동 체크 자체가 중단됩니다.
 
 ---
 
@@ -198,8 +242,11 @@ sudo journalctl -u smart-farm.service -f
 # 최근 에러만 보기
 sudo journalctl -u smart-farm.service --since "10 min ago" --no-pager | grep -E "ERROR|Error|❌"
 
-# 쿨다운 값 확인
+# 쿨다운 값 확인 (수위 경고)
 cat /home/pi/smart_farm/config/notifications.json | python3 -m json.tool | grep cooldown
+
+# 센서 오류 알림 쿨다운 확인
+python3 -c "import json; cfg=json.load(open('/home/pi/smart_farm/config/soil_sensors.json')); print('sensor_alert_cooldown:', cfg.get('irrigation',{}).get('sensor_alert_cooldown','없음'), '초')"
 
 # 쿨다운 실제 반영 확인 (서비스 시작 로그)
 sudo journalctl -u smart-farm.service --since "5 min ago" --no-pager | grep -E "쿨다운|cooldown"
