@@ -79,6 +79,8 @@ class AutoIrrigationController:
                 self.config = json.load(f)
 
             self.irrigation_cfg = self.config.get('irrigation', {})
+            # simulation_mode: True=시뮬 허용(개발용), False=센서 없으면 관수 중단
+            self.simulation_mode = self.irrigation_cfg.get('simulation_mode', False)
 
             for s in self.config.get('sensors', []):
                 self.zone_thresholds[s['zone_id']] = s.get(
@@ -92,8 +94,10 @@ class AutoIrrigationController:
                 'irrigation_duration': 300,
                 'zone_interval': 10,
                 'check_interval': 600,
-                'max_zones_simultaneous': 1
+                'max_zones_simultaneous': 1,
+                'simulation_mode': False
             }
+            self.simulation_mode = False
 
     # ──────────────────────────────────────
     # 모드 제어
@@ -166,10 +170,34 @@ class AutoIrrigationController:
         print(f"🌱 자동 관수 체크: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*50}")
 
+        # ── 센서 데이터 수집 ──────────────────────────────────
         if self.sensor_manager:
             sensor_data = self.sensor_manager.read_all_zones()
-        else:
+
+            # 전체 센서 읽기 실패 시 관수 중단
+            valid_count = sum(1 for d in sensor_data.values() if d.get('valid'))
+            if valid_count == 0:
+                msg = '❌ 모든 토양센서 읽기 실패 - 자동관수를 중단합니다'
+                print(msg)
+                self._log(msg)
+                self._send_sensor_alert(msg)
+                return
+
+        elif self.simulation_mode:
+            # simulation_mode=true 일 때만 시뮬레이션 허용 (개발·테스트 전용)
+            print('⚠️  [시뮬레이션 모드] 가상 센서 데이터를 사용합니다')
+            self._log('[시뮬레이션 모드] 가상 센서 데이터 사용')
             sensor_data = self._simulate_sensor_data()
+
+        else:
+            # 센서 매니저 없음 + simulation_mode=false → 관수 완전 중단
+            msg = ('❌ 토양센서 매니저가 초기화되지 않았습니다.\n'
+                   'soil_sensors.json > irrigation > simulation_mode 를 확인하세요.\n'
+                   '자동관수를 중단합니다.')
+            print(msg)
+            self._log('토양센서 매니저 없음 - 자동관수 중단')
+            self._send_sensor_alert('⚠️ 토양센서 매니저 없음 - 자동관수 중단')
+            return
 
         self.last_sensor_data = sensor_data
 
@@ -429,6 +457,19 @@ class AutoIrrigationController:
         except Exception:
             pass
         print(f"📝 {line.strip()}")
+
+    def _send_sensor_alert(self, message):
+        """토양센서 오류를 텔레그램으로 알림"""
+        try:
+            import sys as _sys
+            _main = (_sys.modules.get('__main__') or
+                     _sys.modules.get('web.app') or
+                     _sys.modules.get('app'))
+            _tn = getattr(_main, 'telegram_notifier', None)
+            if _tn:
+                _tn.send_message(f'🚨 [자동관수 오류]\n{message}')
+        except Exception as e:
+            print(f'⚠️  텔레그램 알림 실패: {e}')
 
     def _simulate_sensor_data(self):
         import random

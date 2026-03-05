@@ -99,6 +99,7 @@
     "zone_interval": 10,
     "check_interval": 300,
     "max_zones_simultaneous": 1,
-    "mode": "auto"
+    "mode": "auto",
+    "simulation_mode": false
   }
 }
