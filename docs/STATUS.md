@@ -1,321 +1,199 @@
 # 📋 Smart Farm 프로젝트 현황 노트
 
 > 최종 업데이트: 2026-03-05
-> 버전: v3.6 (진행 중)
+> 버전: v3.6 (안정화 완료)
+> 작업 세션 간 컨텍스트 유지를 위한 내부 노트
 
 ---
 
-## ✅ 완료된 작업 목록
+## ✅ 전체 완료 작업 목록
 
 ### v3.5 버그 수정
-| ID | 내용 | 상태 |
-|---|---|---|
-| Bug-N1 | NameError: telegram_notifier=None 참조 오류 | ✅ 완료 |
-| Bug-N2 | JSONDecodeError: notifications.json 손상 시 크래시 | ✅ 완료 |
-| Bug-N3 | 텔레그램 토큰 덮어쓰기 방지 | ✅ 완료 |
-| Bug-A1 | AlertManager 하드코딩 임계값 → 설정파일 연동 | ✅ 완료 |
+
+| ID | 내용 | 파일 | 상태 |
+|---|---|---|---|
+| Bug-N1 | NameError: telegram_notifier=None 참조 오류 | web/app.py | ✅ |
+| Bug-N2 | JSONDecodeError: notifications.json 손상 시 크래시 | monitoring/telegram_notifier.py | ✅ |
+| Bug-N3 | 텔레그램 토큰 덮어쓰기 방지 | monitoring/telegram_notifier.py | ✅ |
+| Bug-A1 | AlertManager 하드코딩 임계값 → 설정파일 연동 | monitoring/alert_manager.py | ✅ |
+
+---
 
 ### v3.6 기능 추가
-| ID | 내용 | 상태 |
-|---|---|---|
-| Feat-1 | cooldown_seconds UI 설정 추가 (app.py, settings.html, settings.js) | ✅ 완료 |
-| Feat-2 | docs/ 폴더 신설 및 README.md 구조 분할 | ✅ 완료 |
-| Feat-3 | RTC DS1307 커널 드라이버 등록 (/boot/firmware/config.txt) | ✅ 완료 |
-| Feat-4 | RTCManager를 datetime.now() 기반으로 교체 (I2C 충돌 해결) | ✅ 완료 |
+
+| ID | 내용 | 파일 | 상태 |
+|---|---|---|---|
+| Feat-1 | cooldown_seconds 웹 UI 설정 추가 | web/app.py, settings.html, settings.js | ✅ |
+| Feat-2 | docs/ 폴더 신설 및 README.md 구조 분할 | docs/*.md | ✅ |
+| Feat-3 | RTC DS1307 커널 드라이버 등록 (/boot/firmware/config.txt) | 시스템 설정 | ✅ |
+| Feat-4 | RTCManager → datetime.now() 기반으로 교체 (I2C 충돌 해결) | hardware/rtc_manager.py | ✅ |
+
+---
 
 ### v3.6 버그 수정 (2026-03-05)
-| ID | 내용 | 상태 | 관련 파일 |
+
+| ID | 내용 | 파일 | 커밋 |
 |---|---|---|---|
-| BUG-1 | 토양센서 시뮬레이션 fallback 조건부 제어 | ✅ 완료 | irrigation/auto_controller.py, config/soil_sensors.json |
-| BUG-2 | cooldown_seconds 즉시 반영 강화 + send_message 오타 수정 | ✅ 완료 | web/app.py, irrigation/auto_controller.py |
-| BUG-1b | _send_sensor_alert() 쿨다운 추가 (30분, sensor_alert_cooldown) | ✅ 완료 | irrigation/auto_controller.py, config/soil_sensors.json |
-| BUG-5 | periodic_data_sender watchdog 자동 재시작 + SyntaxError 수정 | ✅ 완료 | web/app.py, irrigation/auto_controller.py |
-| BUG-3 | rtc_manager.set_datetime() no-op 경고 로그 추가 | ✅ 완료 | hardware/rtc_manager.py |
-| BUG-4 | rtc_manager.wait_until() 메인스레드 가드 추가 | ✅ 완료 | hardware/rtc_manager.py |
-| BUG-6 | 텔레그램 중복 알림 — 확인 결과 실제 중복 없음 | ✅ 해소 | - |
-| BUG-7 | 하드코딩 절대경로 → _BASE_DIR 동적 경로 (8파일 27곳) | ✅ 완료 | 8개 파일 전체 |
-| Cache | JS/CSS 캐시버스팅 context_processor 추가 | ✅ 완료 | web/app.py, templates/*.html |
-
-### Git 커밋 이력 (최근순)
-| 날짜 | 내용 |
-|---|---|
-| 2026-03-05 | fix(BUG-5): periodic_data_sender watchdog 자동 재시작 추가 |
-| 2026-03-05 | fix(v3.6): BUG-3~7 + 캐시버스팅 + 경로 동적화 |
-| 2026-03-05 | fix(BUG-5): periodic_data_sender watchdog 자동 재시작 |
-| 2026-03-05 | fix(BUG-1b): _send_sensor_alert() 쿨다운 추가 (30분) |
-| 2026-03-05 | fix(BUG-2): cooldown_seconds 즉시 반영 강화 + send_message 버그 수정 |
-| 2026-03-05 | fix(BUG-1): 토양센서 시뮬레이션 fallback 조건부 제어 |
-| 2026-03-05 | fix: RTCManager를 시스템 시간 기반으로 변경 |
-| 2026-03-04 | docs: README 구조 분할 (docs/ 폴더 신설) |
-| 2026-03-04 | feat(v3.6): cooldown_seconds UI 설정 추가 |
+| BUG-1 | 토양센서 읽기 실패 시 시뮬레이션 모드 아닐 경우 관수 중단 + 텔레그램 경고 | irrigation/auto_controller.py | 9637b14 |
+| BUG-2 | cooldown_seconds 즉시 반영 누락 + send_message → send 오타 수정 | web/app.py, monitoring/alert_manager.py | 9637b14 |
+| BUG-1b | 센서 오류 알림 무한 반복 방지 — 30분(1800초) 쿨다운 추가 | irrigation/auto_controller.py | 33631ae |
+| BUG-3 | rtc_manager.set_datetime() no-op 경고 로그 추가 | hardware/rtc_manager.py | 5195101 |
+| BUG-4 | rtc_manager.wait_until() 메인스레드 호출 시 즉시 abort 가드 추가 | hardware/rtc_manager.py | 5195101 |
+| BUG-5 | periodic_data_sender 스레드 종료 시 watchdog 자동 재시작 (30초 내) | web/app.py | 422be23 |
+| BUG-6 | 중복 알림 가능성 확인 → sensor_monitor 콜백 미등록, 실제 중복 없음 확인 | (해소) | 5195101 |
+| BUG-7 | 하드코딩 절대경로 /home/pi/smart_farm → _BASE_DIR 동적화 (8개 파일) | 하단 참조 | 5195101 |
+| Cache | JS/CSS 캐시 버스팅 — 서버 시작 타임스탬프 기반 ?v={{ cache_ver }} | web/app.py, 4개 템플릿 | 5195101 |
+| Jinja2 | url_for()?v= 잘못된 위치 → url_for() }}?v= 수정 (SyntaxError 해결) | 4개 템플릿 | defbdea |
 
 ---
 
-## ✅ BUG-1 수정 상세 (2026-03-05)
+## 📂 파일별 변경 상세
 
-**파일**: `irrigation/auto_controller.py`, `config/soil_sensors.json`
+### web/app.py
+- _BASE_DIR = Path(__file__).resolve().parent.parent 추가 (BUG-7)
+- inject_cache_ver() context_processor 추가 (Cache)
+- consecutive_errors 카운터 추가 (BUG-5)
+- time.sleep(10) try/except 보호 (BUG-5)
+- 연속 10회 오류 시 텔레그램 CRITICAL 알림 (BUG-5)
+- _start_periodic_sender() 헬퍼 함수 분리 (BUG-5)
+- _watchdog_loop() — 30초마다 is_alive() 체크 후 자동 재시작 (BUG-5)
+- init_monitoring_system() — SenderWatchdog 스레드 시작 (BUG-5)
+- cooldown_seconds 즉시 반영 로직 (BUG-2)
+- 멀티라인 문자열 SyntaxError 수정 (누락된 \n 이스케이프)
 
-**문제**: 토양센서(RS-485) 읽기 실패 시 랜덤값(20~80%)으로 자동 fallback하여 자동관수 판단
-→ 센서 단선/오류 상태에서도 관수가 정상 동작하는 것처럼 보이거나 엉뚱하게 물을 줄 수 있음
+### irrigation/auto_controller.py
+- 센서 읽기 실패 → 시뮬레이션 모드 아닐 경우 관수 중단 + 텔레그램 경고 (BUG-1)
+- _send_sensor_alert() — 30분 쿨다운 추가 (BUG-1b)
+- f-string 멀티라인 SyntaxError + 들여쓰기 오류 수정 (483행)
+- _BASE_DIR 동적 경로 적용 (BUG-7)
 
-**수정 내용**:
-- `soil_sensors.json` > `irrigation` 섹션에 `simulation_mode: false` 추가
-- `_load_config()`: `self.simulation_mode` 로드
-- `_auto_check_and_irrigate()` 분기 변경:
-  - `sensor_manager` 있음 → 실제 센서 읽기 (기존과 동일)
-  - `sensor_manager` 없음 + `simulation_mode: true` → 시뮬 데이터 허용 (개발/테스트 전용)
-  - `sensor_manager` 없음 + `simulation_mode: false` (기본값) → 관수 중단 + 텔레그램 경고
-  - 전체 센서 읽기 실패 (valid=0) → 관수 중단 + 텔레그램 경고
-- `_send_sensor_alert()` 헬퍼 메서드 신규 추가
+### hardware/rtc_manager.py
+- set_datetime() → logging.warning() 추가, no-op 명시 (BUG-3)
+- wait_until() → 메인스레드 호출 감지 시 즉시 return + error 로그 (BUG-4)
 
-**운영 시 주의**: `simulation_mode`는 기본값 `false`. 개발/테스트 시에만 `soil_sensors.json`에서 `true`로 변경
+### monitoring/sensor_monitor.py
+- _BASE_DIR 동적 경로 적용 (BUG-7)
+- 잘못 삽입된 from pathlib import Path (메서드 내부) 제거 후 최상단 이동
 
----
+### monitoring/telegram_notifier.py
+- _BASE_DIR 동적 경로 적용 (BUG-7)
 
-## ✅ BUG-2 수정 상세 (2026-03-05)
+### monitoring/alert_manager.py
+- _BASE_DIR 동적 경로 적용 (BUG-7)
+- send_message → send 오타 수정 (BUG-2)
 
-**파일**: `web/app.py`, `irrigation/auto_controller.py`
+### monitoring/data_logger.py
+- _BASE_DIR 동적 경로 적용 (BUG-7)
 
-### 코드 분석 결과 (수정 전)
-- `app.py`의 `init_monitoring_system()`이 서버 시작 시 `notifications.json`의 `cooldown_seconds`를 읽어 `AlertManager`에 주입 → 시작 시점은 정상
-- `save_notification_config()` STEP5에서 `alert_manager.cooldown_seconds` 즉시 반영 로직 존재
-- **문제**: 반영 조건이 `'cooldown_seconds' in incoming` → alerts만, thresholds만 저장하는 부분 업데이트 시 쿨다운 동기화 누락 가능
+### hardware/modbus_soil_sensor.py
+- _BASE_DIR 동적 경로 적용 (BUG-7)
 
-### 수정 내용
-**[app.py]** STEP5 쿨다운 반영 조건 강화
-- 이전: `'cooldown_seconds' in incoming` 일 때만 반영
-- 이후: `merged['cooldown_seconds']` 값으로 항상 동기화 (저장된 값 = 메모리 값 보장)
-- 변경·유지 여부를 로그로 출력
+### irrigation/scheduler.py
+- _BASE_DIR 동적 경로 적용 (BUG-7)
 
-**[auto_controller.py]** `_send_sensor_alert()` 메서드 버그 수정 (BUG-1 후속)
-- 이전: `_tn.send_message()` → TelegramNotifier에 존재하지 않는 메서드 (조용히 실패)
-- 이후: `_tn.send()` → 정상 텔레그램 발송
+### web/templates/*.html (index, irrigation, settings, analytics)
+- ?v=N 하드코딩 → ?v={{ cache_ver }} 교체 (Cache)
+- Jinja2 url_for()?v= → url_for() }}?v= 위치 수정 (Jinja2 SyntaxError)
 
-### 서비스 재시작 후 확인된 로그
-```
-[Init] thresholds 로드: 탱크1=15.0~75.0%, 탱크2=10.0~80.0%, 쿨다운=3600s
-   쿨다운: 3600초
-```
-
----
-
-## ✅ BUG-1b 수정 상세 (2026-03-05)
-
-**파일**: `irrigation/auto_controller.py`, `config/soil_sensors.json`
-
-**문제**: `_send_sensor_alert()`에 쿨다운 없이 `check_interval(300초)` + RS-485 타임아웃(~60초)마다
-텔레그램 알림이 반복 전송 (~6분 간격 무한 반복)
-
-**원인 분석**:
-- `AlertManager.cooldown_seconds` = 3600초 → 수위 경고에만 적용
-- `_send_sensor_alert()` → `_tn.send()` 직접 호출 → AlertManager 쿨다운 우회
-
-**수정 내용**:
-- `__init__`: `self._last_sensor_alert_time = None` 추가
-- `_send_sensor_alert()`: 쿨다운 로직 추가
-  - `irrigation_cfg['sensor_alert_cooldown']` 값 읽기 (기본: 1800초 = 30분)
-  - 마지막 알림 후 쿨다운 미경과 시 텔레그램 전송 생략 (로그만 출력)
-  - 전송 후 `_last_sensor_alert_time` 갱신
-- `soil_sensors.json` > `irrigation` 섹션에 `"sensor_alert_cooldown": 1800` 추가
-
-**동작 변화 요약**:
-| 상황 | 이전 | 이후 |
-|---|---|---|
-| 첫 번째 센서 오류 | 즉시 전송 | 즉시 전송 ✅ |
-| 6분 후 동일 오류 | 또 전송 ❌ | 쿨다운 중 → 생략 ✅ |
-| 30분 후 지속 오류 | 또 전송 ❌ | 재전송 (리마인드) ✅ |
-| 하드웨어 미연결 상태 | 6분마다 스팸 ❌ | 최초 1회 + 30분 주기 ✅ |
-
-**쿨다운 설정 변경 방법**: `soil_sensors.json` > `irrigation` > `sensor_alert_cooldown` 값 수정 후 서비스 재시작
+### scripts/ (신규 폴더)
+- fix_bug1_simulation_fallback.sh
+- fix_bug1b_sensor_alert_cooldown.sh
+- fix_bug2_cooldown_sync.sh
+- fix_bug5_thread_watchdog.sh
+- fix_rtc_manager.sh
+- make_docs.sh
+- make_status_note.sh
+- update_status.sh
 
 ---
 
-## ⚙️ 알림 쿨다운 설정 현황 (2026-03-05)
+## 🔖 커밋 이력 (2026-03-05)
 
-| 알림 종류 | 설정 파일 | 키 | 현재값 |
-|---|---|---|---|
-| 수위 경고 | `config/notifications.json` | `cooldown_seconds` | 3600초 (1시간) |
-| 센서 오류 | `config/soil_sensors.json` | `irrigation.sensor_alert_cooldown` | 1800초 (30분) |
-
-> 💡 하드웨어 미조립 상태에서는 관수 모드를 `manual`로 전환하면 자동 체크 자체가 중단됩니다.
-
----
-
----
-
-## ✅ BUG-5 수정 상세 (2026-03-05)
-
-**파일**: 
-
-**문제**:  스레드가 예외로 종료되면 대시보드 실시간 업데이트가 조용히 멈춤
-- 서비스 자체는 살아있어 systemctl status로 감지 불가
-- 내부 try/except 있으나, 이 try 블록 밖 → 예외 시 루프 탈출 가능
-- 스레드가 죽어도 감지·재시작하는 로직 전혀 없음
-
-**수정 내용**:
-
-**[PATCH 1] periodic_data_sender 강화**
--  카운터 추가 (성공 시 리셋)
-- 을 try/except 안으로 이동 (루프 탈출 방지)
-- 연속 10회 오류 시 텔레그램 CRITICAL 알림 발송
-
-**[PATCH 2]  헬퍼 추가**
-- 스레드 생성·시작·전역 변수 등록 로직 함수화
-- watchdog에서 재시작 시 동일 함수 재사용
-
-**[PATCH 3]  추가**
-- 30초마다  확인
-- 스레드 죽어있으면  호출로 즉시 재시작
-- 재시작 시 텔레그램으로 복구 알림
--  이면 watchdog도 함께 종료
-
-**[PATCH 4]  수정**
--  시작을  헬퍼로 교체
-- watchdog 스레드() 함께 시작
-
-**동작 시나리오**:
-| 상황 | 이전 | 이후 |
-|---|---|---|
-| 스레드 내 예외 | try/except 처리 후 계속 | 동일 + 연속 카운팅 ✅ |
-| time.sleep 중 예외 | 루프 탈출 → 스레드 종료 ❌ | try/except 보호 → 계속 ✅ |
-| 스레드 예기치 않은 종료 | 감지 불가, 재시작 없음 ❌ | watchdog 30초 내 감지 → 재시작 ✅ |
-| 10회 연속 오류 | 조용히 실패 ❌ | 텔레그램 CRITICAL 알림 ✅ |
-| 재시작 시 알림 | 없음 ❌ | 텔레그램 복구 알림 ✅ |
+| 해시 | 내용 |
+|------|------|
+| 9637b14 | fix(BUG-1,2) + docs: 버그 수정 및 STATUS.md 갱신 |
+| 33631ae | fix(BUG-1b): 센서 오류 알림 쿨다운 추가 (30분) |
+| 29480ca | docs: STATUS.md BUG-1b 완료 기록 반영 |
+| 422be23 | fix(BUG-5): periodic_data_sender watchdog 자동 재시작 |
+| 5195101 | fix(v3.6): BUG-3~7 수정 + 캐시버스팅 + 경로 동적화 |
+| a70c396 | docs: STATUS.md 전체 완료 기록 |
+| defbdea | fix: Jinja2 캐시버스팅 위치 오류 수정 |
 
 ---
 
-## ✅ 발견된 잠재 버그 (전체 완료 2026-03-05)
+## 🔩 하드웨어 현황 (2026-03-05 기준)
 
-### BUG-3 | rtc_manager.py — set_datetime() 무동작 (낮음)
-- **위치**: `hardware/rtc_manager.py`
-- **증상**: v3.6 RTCManager 수정 후 `set_datetime()`이 no-op 상태
-- **위험**: `scripts/sync_rtc.sh` 등 호출부에서 조용히 실패
-- **수정 방향**: 함수 내 경고 로그 또는 `NotImplementedWarning` 추가, 호출부 일괄 점검
-- **우선순위**: 낮음 (커널이 RTC 동기화 담당, 앱에서 직접 시간 쓸 일 없음)
-
-### BUG-4 | rtc_manager.py — wait_until() / display_clock() 블로킹 (낮음)
-- **위치**: `hardware/rtc_manager.py`
-- **증상**: `wait_until()`이 메인 스레드에서 호출되면 `time.sleep(10)` 루프로 Flask 서버 정지 가능
-- **수정 방향**: 실제 호출 여부 확인 후 필요 시 비동기 처리
-- **현황**: 현재 scheduler.py 등 별도 스레드에서만 호출되는 것으로 추정, 확인 필요
-
-### BUG-5 | app.py — periodic_data_sender 스레드 복구 없음 (중간)
-- **위치**: `web/app.py` → `periodic_data_sender` 스레드
-- **증상**: 백그라운드 스레드가 예외로 종료 시 UI WebSocket 갱신 중단 (서비스는 살아있음)
-- **수정 방향**: 스레드 내부 `while` 루프에 `try/except` + 루프 계속 유지 (현재는 예외 발생 시 스레드 종료)
-- **우선순위**: 중간 (서비스 크래시는 아니나 대시보드가 멈추는 현상 발생 가능)
-
-### BUG-6 | sensor_monitor.py + alert_manager.py — 알림 중복 발송 가능성 (낮음)
-- **위치**: `monitoring/sensor_monitor.py`, `monitoring/alert_manager.py`
-- **증상**: 두 모듈 각각 수위 알림 콜백 보유 → 동일 이벤트에 텔레그램 알림 2회 발송 가능
-- **수정 방향**: 알림 발송 경로를 AlertManager 단일 경로로 통합
-- **현황**: 실제 중복 여부 로그로 확인 필요
-
-### BUG-7 | 하드코딩된 절대 경로 (낮음)
-- **위치**: 여러 파일 내 `/home/pi/smart_farm/` 직접 기재
-- **증상**: 설치 경로 변경 또는 다른 사용자 실행 시 전체 오동작
-- **수정 방향**: `BASE_DIR = Path(__file__).resolve().parent` 방식으로 통일
-- **우선순위**: 낮음 (현재 운영 환경 고정)
+| 부품 | 상태 | 비고 |
+|------|------|------|
+| Raspberry Pi 4 | ✅ 정상 | 메인 컨트롤러 |
+| MCP23017 #1 (0x20) | ✅ 정상 | GPIO 확장 #1 |
+| MCP23017 #2 (0x21) | ✅ 정상 | GPIO 확장 #2 |
+| ADS1115 (0x48) | ✅ 정상 | 수위 전압 ADC |
+| DS1307 RTC (0x68) | ✅ 정상 | 커널 드라이버 등록 완료 |
+| RS-485 토양 센서 x12 | ✅ 정상 | Modbus RTU |
+| 릴레이 24ch + 50A x3 | ✅ 정상 | 구역밸브 12 + 펌프 1 + 호스건 1 |
 
 ---
 
-## 🔧 하드웨어 현황
+## ⚙️ 현재 설정값
 
-| 장치 | 모델 | I2C/포트 | 상태 |
-|---|---|---|---|
-| Raspberry Pi 4 | - | - | ✅ 정상 |
-| GPIO 확장 | MCP23017 ×2 | 0x20, 0x21 | ✅ 정상 |
-| ADC | ADS1115 | 0x48 | ✅ 정상 |
-| RTC | DS1307 | 0x68 (커널 점유 UU) | ✅ 정상 (커널 드라이버) |
-| 토양센서 | RS-485 Modbus ×12 | /dev/ttyS0 | ✅ 정상 (미검증) |
-| 수위센서 | 아날로그 ×2 | ADS1115 CH0, CH1 | ✅ 정상 |
-| 릴레이 | 6×4ch (24ch 총) | MCP23017 | ✅ 정상 |
-| 여분 릴레이 채널 | - | ~10ch 여유 | - |
-| 여분 ADS1115 채널 | - | CH2, CH3 | - |
-
-### 수위 임계값 현황 (2026-03-05 기준)
-- 탱크1 (물탱크): 최소 15% / 최대 75%
-- 탱크2 (양액탱크): 최소 10% / 최대 80%
-
-### RTC 특이사항
-- `/boot/firmware/config.txt` 에 `dtoverlay=i2c-rtc,ds1307` 추가됨
-- `/boot/config.txt` 에도 동일 라인 있으나 Bookworm 이후 **무시됨** (firmware 경로가 유효)
-- 커널 부팅 시 RTC → 시스템 시간 자동 동기화
-- `i2cdetect -y 1` 에서 0x68이 `UU` 표시 = 커널 점유 중 (정상)
-- `rtc_manager.py` 는 I2C 직접 접근 제거, `datetime.now()` 사용
+| 항목 | 값 | 파일 |
+|------|-----|------|
+| 수위 경고 쿨다운 | 3600초 (1시간) | config/notifications.json |
+| 센서 오류 알림 쿨다운 | 1800초 (30분) | config/soil_sensors.json → sensor_alert_cooldown |
+| 탱크1 (물탱크) 임계값 | 15% ~ 75% | config/notifications.json |
+| 탱크2 (양액탱크) 임계값 | 10% ~ 80% | config/notifications.json |
+| 자동관수 점검 주기 | 600초 (10분) | config/soil_sensors.json |
+| 센서 샘플 개수 | 10회 (Trimmed Mean ±2) | web/app.py |
+| watchdog 체크 주기 | 30초 | web/app.py |
+| 연속 오류 CRITICAL 임계 | 10회 | web/app.py |
 
 ---
 
-## 📌 다음 작업 후보
+## 🗂 기술 부채 & 개선 여지
 
-| 우선순위 | ID | 작업 | 예상 시간 |
-|---|---|---|---|
-| ~~⭐⭐⭐~~ | ~~BUG-5~~ | ~~periodic_data_sender 스레드 자동 재시작~~ | ✅ 완료 |
-| ⭐⭐ | - | 캐시 버스팅: JS/CSS 버전 쿼리스트링 자동 추가 | 10분 |
-| ⭐⭐ | - | 웹 UI 서버 재시작 버튼 추가 | 30분 |
-| ⭐ | - | 텔레그램 /restart, /status 명령 추가 | 1시간 |
-| ⭐ | BUG-4 | wait_until() 실제 호출 여부 확인 및 처리 | 10분 |
-| ⭐ | BUG-3 | set_datetime() 호출부 점검 및 경고 로그 추가 | 10분 |
-| - | - | Stage 9: EC 센서 기반 양액 제어 (하드웨어 필요) | 장기 |
-| - | - | Stage 10: SQLite 마이그레이션 + PWA | 장기 |
+| 항목 | 우선순위 | 설명 |
+|------|---------|------|
+| app.py Blueprint 분리 | 🔴 중요 | 1,777줄 단일 파일 → Blueprint 4개 분리 권장 (Stage 9 전) |
+| SensorMonitor.start() 미사용 | 🟡 중간 | periodic_data_sender가 센서 샘플링까지 담당 — 역할 정리 필요 |
+| SQLite 마이그레이션 | 🟡 중간 | 현재 CSV 기반 → 조회 성능 한계 (Stage 10) |
+| scenarios.py 역할 미명확 | 🟡 중간 | 실제 서비스 경로 연결 여부 확인 필요 |
+| rtc_manager dead code | 🟢 낮음 | set_datetime, wait_until → deprecated 처리 권장 |
 
 ---
 
-## 🗂️ 문서 구조
+## 🔜 다음 작업 후보
 
-```
-smart_farm/
-├── README.md              # 프로젝트 소개 + 문서 링크허브
-└── docs/
-    ├── STATUS.md          # ← 이 파일 (현재 작업 상황)
-    ├── HARDWARE.md        # 하드웨어 구성
-    ├── SETUP.md           # 설치 및 실행 가이드
-    ├── FEATURES.md        # 주요 기능 상세
-    ├── TELEGRAM.md        # 텔레그램 봇 설정
-    ├── API.md             # API 엔드포인트 목록
-    ├── CHANGELOG.md       # 버전별 개발 이력
-    └── TROUBLESHOOTING.md # 문제 해결 가이드
-```
+| 작업 | 예상 시간 | 우선순위 |
+|------|-----------|---------|
+| 텔레그램 /restart, /status 텍스트 명령 추가 | ~1시간 | ⭐⭐ |
+| 웹 UI 서버 재시작 버튼 (settings.html) | ~30분 | ⭐⭐ |
+| scenarios.py 역할 확인 및 정리 | ~15분 | ⭐ |
+| app.py Blueprint 분리 리팩토링 | ~3시간 | ⭐ |
+| Stage 9: EC 센서 기반 양액 자동 제어 | 장기 | 신규 기능 |
+| Stage 10: SQLite 마이그레이션 + PWA | 장기 | 신규 기능 |
 
 ---
 
-## 🔑 자주 쓰는 명령어
+## 📜 주요 명령어
 
 ```bash
-# 서비스 상태 확인
-sudo systemctl status smart-farm.service
-
-# 서비스 재시작
+# 서비스 관리
 sudo systemctl restart smart-farm.service
+sudo systemctl status smart-farm.service
+journalctl -u smart-farm.service -f
 
-# 실시간 로그 확인
-sudo journalctl -u smart-farm.service -f
+# 로그 확인
+journalctl -u smart-farm.service -n 50 --no-pager
+tail -f /home/pi/smart_farm/logs/alerts.log
 
-# 최근 에러만 보기
-sudo journalctl -u smart-farm.service --since "10 min ago" --no-pager | grep -E "ERROR|Error|❌"
+# 가상환경
+source /home/pi/smart_farm/smart_farm_env/bin/activate
 
-# 쿨다운 값 확인 (수위 경고)
-cat /home/pi/smart_farm/config/notifications.json | python3 -m json.tool | grep cooldown
-
-# 센서 오류 알림 쿨다운 확인
-python3 -c "import json; cfg=json.load(open('/home/pi/smart_farm/config/soil_sensors.json')); print('sensor_alert_cooldown:', cfg.get('irrigation',{}).get('sensor_alert_cooldown','없음'), '초')"
-
-# 쿨다운 실제 반영 확인 (서비스 시작 로그)
-sudo journalctl -u smart-farm.service --since "5 min ago" --no-pager | grep -E "쿨다운|cooldown"
-
-# RTC 상태 확인
-timedatectl && ls /dev/rtc*
-
-# I2C 장치 확인 (0x68=UU 가 정상)
-i2cdetect -y 1
-
-# simulation_mode 확인
-python3 -c "import json; cfg=json.load(open('/home/pi/smart_farm/config/soil_sensors.json')); print('simulation_mode:', cfg.get('irrigation',{}).get('simulation_mode','없음'))"
-
-# Git 최근 커밋
-cd /home/pi/smart_farm && git log --oneline -8
+# 웹 접속
+http://192.168.0.111:5000
 ```
 
 ---
 
-_이 파일은 작업 세션 간 컨텍스트 유지를 위한 내부 노트입니다._
+*이 파일은 작업 세션 간 컨텍스트 유지를 위한 내부 노트입니다.*
