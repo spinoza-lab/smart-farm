@@ -1,7 +1,7 @@
 # 📋 Smart Farm 프로젝트 현황 노트
 
-> 최종 업데이트: 2026-03-05
-> 버전: v3.6 (안정화 완료)
+> 최종 업데이트: 2026-03-06
+> 버전: v3.7 (안전성 강화)
 > 작업 세션 간 컨텍스트 유지를 위한 내부 노트
 
 ---
@@ -47,81 +47,101 @@
 
 ---
 
-## 📂 파일별 변경 상세
+### v3.7 기능 추가 (2026-03-05 ~ 03-06)
 
-### web/app.py
-- _BASE_DIR = Path(__file__).resolve().parent.parent 추가 (BUG-7)
-- inject_cache_ver() context_processor 추가 (Cache)
-- consecutive_errors 카운터 추가 (BUG-5)
-- time.sleep(10) try/except 보호 (BUG-5)
-- 연속 10회 오류 시 텔레그램 CRITICAL 알림 (BUG-5)
-- _start_periodic_sender() 헬퍼 함수 분리 (BUG-5)
-- _watchdog_loop() — 30초마다 is_alive() 체크 후 자동 재시작 (BUG-5)
-- init_monitoring_system() — SenderWatchdog 스레드 시작 (BUG-5)
-- cooldown_seconds 즉시 반영 로직 (BUG-2)
-- 멀티라인 문자열 SyntaxError 수정 (누락된 \n 이스케이프)
-
-### irrigation/auto_controller.py
-- 센서 읽기 실패 → 시뮬레이션 모드 아닐 경우 관수 중단 + 텔레그램 경고 (BUG-1)
-- _send_sensor_alert() — 30분 쿨다운 추가 (BUG-1b)
-- f-string 멀티라인 SyntaxError + 들여쓰기 오류 수정 (483행)
-- _BASE_DIR 동적 경로 적용 (BUG-7)
-
-### hardware/rtc_manager.py
-- set_datetime() → logging.warning() 추가, no-op 명시 (BUG-3)
-- wait_until() → 메인스레드 호출 감지 시 즉시 return + error 로그 (BUG-4)
-
-### monitoring/sensor_monitor.py
-- _BASE_DIR 동적 경로 적용 (BUG-7)
-- 잘못 삽입된 from pathlib import Path (메서드 내부) 제거 후 최상단 이동
-
-### monitoring/telegram_notifier.py
-- _BASE_DIR 동적 경로 적용 (BUG-7)
-
-### monitoring/alert_manager.py
-- _BASE_DIR 동적 경로 적용 (BUG-7)
-- send_message → send 오타 수정 (BUG-2)
-
-### monitoring/data_logger.py
-- _BASE_DIR 동적 경로 적용 (BUG-7)
-
-### hardware/modbus_soil_sensor.py
-- _BASE_DIR 동적 경로 적용 (BUG-7)
-
-### irrigation/scheduler.py
-- _BASE_DIR 동적 경로 적용 (BUG-7)
-
-### web/templates/*.html (index, irrigation, settings, analytics)
-- ?v=N 하드코딩 → ?v={{ cache_ver }} 교체 (Cache)
-- Jinja2 url_for()?v= → url_for() }}?v= 위치 수정 (Jinja2 SyntaxError)
-
-### scripts/ (신규 폴더)
-- fix_bug1_simulation_fallback.sh
-- fix_bug1b_sensor_alert_cooldown.sh
-- fix_bug2_cooldown_sync.sh
-- fix_bug5_thread_watchdog.sh
-- fix_rtc_manager.sh
-- make_docs.sh
-- make_status_note.sh
-- update_status.sh
+| ID | 내용 | 파일 | 커밋 |
+|---|---|---|---|
+| Stage-8.7 | 텔레그램 /status, /restart 텍스트 명령어 추가 | monitoring/telegram_notifier.py | 3f3bb36 |
+| Stage-8.8 | 웹 UI 서버 재시작 버튼 추가 (시스템 관리 탭) | web/app.py, settings.html, settings.js | f5a2a84 |
+| Stage-8.8b | system-pane 탭 위치 수정 (alerts 패널 내부 중첩 버그) | web/templates/settings.html | 5ae3b11 |
+| Stage-8.8c | confirmRestart 함수 미정의 오류 수정 (settings.js에 추가) | web/static/js/settings.js | fd5b891 |
+| Stage-8.8d | 서버 정보 카드 탱크 수위 항목 제거 (불필요 정보 정리) | web/static/js/settings.js | (미커밋) |
 
 ---
 
-## 🔖 커밋 이력 (2026-03-05)
+### v3.7 버그 수정 / 안전성 강화 (2026-03-06)
+
+| ID | 내용 | 파일 | 커밋 |
+|---|---|---|---|
+| BUG-8 | 탱크 수위 콜백 미주입 — 탱크 빈 상태에서도 관수 강행 버그 | web/app.py | (금일) |
+| BUG-9 | SIGTERM 수신 시 안전 종료 핸들러 미구현 — 재시작 중 펌프 방치 위험 | web/app.py | (금일) |
+
+**BUG-8 상세:**
+- `auto_irrigation._check_tank_level()`이 `get_tank_level_callback` 존재 여부만 확인
+- `app.py`에서 콜백을 주입하지 않아 항상 `return True, "탱크 수위 충분"` 통과
+- 수정: `init_monitoring_system()` 내 `auto_irrigation` 생성 직후 `cached_sensor_data` 기반 콜백 주입
+
+**BUG-9 상세:**
+- `systemctl restart` 시 SIGTERM → Python 즉시 종료 → `finally` 블록 실행 불가 → 펌프/밸브 ON 유지
+- 수정: `import signal` + `import atexit` + `_graceful_shutdown()` + `_emergency_relay_off()` 추가
+- 동작: SIGTERM → 관수 중단 플래그 → 2초 대기 → `relay_controller.all_off()` → `sys.exit(0)` → atexit 이중 확인
+
+---
+
+## 🟠 미수정 항목 (발견됨, 작업 예정)
+
+| ID | 내용 | 파일 | 영향 | 우선순위 |
+|---|---|---|---|---|
+| BUG-10 | 스케줄러 `check_moisture` 기능 무력화 — `self.controller.thresholds` 오타 (실제: `zone_thresholds`) | irrigation/scheduler.py | check_moisture=True 설정 시 항상 기본값 40% 사용 | 🟠 |
+| BUG-11 | 핸드건 ON 상태에서 자동관수 인터록 없음 — 펌프 동시 동작 가능 | hardware/relay_controller.py, irrigation/auto_controller.py | 핸드건 + 자동관수 동시 실행 가능성 | 🟠 |
+| BUG-12 | SensorMonitor.history 재시작마다 초기화 — /api/status 재시작 직후 0.0% 반환 | monitoring/sensor_monitor.py | 서버 재시작 후 수위 표시 부정확 | 🟡 |
+| BUG-13 | 알림 쿨다운 설정이 3곳에 분산 (SensorMonitor/AlertManager/auto_controller) — UI 설정값 반영 불일치 가능 | 여러 파일 | 알림 동작 예측 어려움 | 🟡 |
+
+---
+
+## 🗂 기술 부채 & 개선 여지
+
+| 항목 | 우선순위 | 설명 |
+|------|---------|------|
+| app.py Blueprint 분리 | 🔴 중요 | 현재 ~1,870줄 단일 파일 → Blueprint 4개 분리 권장 (Stage 9 전) |
+| SensorMonitor.start() 미사용 | 🟡 중간 | periodic_data_sender가 센서 샘플링까지 담당 — 역할 정리 필요 |
+| SQLite 마이그레이션 | 🟡 중간 | 현재 CSV 기반 → 조회 성능 한계 (Stage 10) |
+| scenarios.py 역할 미명확 | 🟡 중간 | 실제 서비스 경로 연결 여부 확인 필요 |
+| rtc_manager dead code | 🟢 낮음 | set_datetime, wait_until → deprecated 처리 권장 |
+
+---
+
+## 📂 파일별 변경 상세 (v3.7 추가분)
+
+### web/app.py
+- `import signal`, `import atexit` 추가 (BUG-9)
+- `_emergency_relay_off()` — atexit 등록, 종료 시 릴레이 강제 OFF (BUG-9)
+- `_graceful_shutdown()` — SIGTERM/SIGINT 수신 시 관수 중단 + 릴레이 OFF + sys.exit(0) (BUG-9)
+- `signal.signal(SIGTERM/SIGINT, _graceful_shutdown)` 등록 (BUG-9)
+- `atexit.register(_emergency_relay_off)` — 이중 안전망 (BUG-9)
+- `auto_irrigation.get_tank_level_callback = _get_tank1_level` 주입 (BUG-8)
+- `/api/system/restart` POST 엔드포인트 추가 (Stage-8.8)
+
+### web/templates/settings.html
+- 시스템 관리 탭 (system-pane) 추가 (Stage-8.8)
+- system-pane 위치 수정: alerts 패널 외부로 이동 (Stage-8.8b)
+
+### web/static/js/settings.js
+- `confirmRestart()` 함수 추가 — 팝업 확인 → POST /api/system/restart → 15초 카운트다운 → 새로고침 (Stage-8.8c)
+- `loadServerInfo()` 함수 추가 — /api/status + /api/irrigation/status 병렬 호출, 모니터링/관수 상태 표시 (Stage-8.8c)
+- 서버 정보 카드 탱크 수위 항목 제거 (Stage-8.8d)
+
+---
+
+## 🔖 커밋 이력 (전체)
 
 | 해시 | 내용 |
 |------|------|
-| 9637b14 | fix(BUG-1,2) + docs: 버그 수정 및 STATUS.md 갱신 |
-| 33631ae | fix(BUG-1b): 센서 오류 알림 쿨다운 추가 (30분) |
-| 29480ca | docs: STATUS.md BUG-1b 완료 기록 반영 |
-| 422be23 | fix(BUG-5): periodic_data_sender watchdog 자동 재시작 |
+| (금일) | fix(safety): 탱크 수위 콜백 주입 + SIGTERM 안전 종료 핸들러 추가 |
+| fd5b891 | fix(Stage 8.8): system-pane 위치 수정 + confirmRestart 함수 추가 |
+| 5ae3b11 | fix(Stage 8.8): 시스템 관리 탭 위치 수정 |
+| f5a2a84 | feat(Stage 8.8): 웹 UI 서버 재시작 버튼 추가 |
+| d53a91a | fix: /restart 무한재시작 버그 수정 (offset 초기화) |
+| 3f3bb36 | feat(Stage 8.7): 텔레그램 /status, /restart 텍스트 명령어 추가 |
+| a3b8574 | docs: STATUS.md + README.md 전체 최신화 (v3.6 완료 기록) |
 | 5195101 | fix(v3.6): BUG-3~7 수정 + 캐시버스팅 + 경로 동적화 |
-| a70c396 | docs: STATUS.md 전체 완료 기록 |
-| defbdea | fix: Jinja2 캐시버스팅 위치 오류 수정 |
+| 422be23 | fix(BUG-5): periodic_data_sender watchdog 자동 재시작 |
+| 33631ae | fix(BUG-1b): 센서 오류 알림 쿨다운 추가 (30분) |
+| 9637b14 | fix(BUG-1,2) + docs: 버그 수정 및 STATUS.md 갱신 |
 
 ---
 
-## 🔩 하드웨어 현황 (2026-03-05 기준)
+## 🔩 하드웨어 현황 (2026-03-06 기준)
 
 | 부품 | 상태 | 비고 |
 |------|------|------|
@@ -130,7 +150,7 @@
 | MCP23017 #2 (0x21) | ✅ 정상 | GPIO 확장 #2 |
 | ADS1115 (0x48) | ✅ 정상 | 수위 전압 ADC |
 | DS1307 RTC (0x68) | ✅ 정상 | 커널 드라이버 등록 완료 |
-| RS-485 토양 센서 x12 | ✅ 정상 | Modbus RTU |
+| RS-485 토양 센서 x12 | ⚠️ 미연결 | Modbus RTU — 실제 센서 연결 전 simulation_mode=False |
 | 릴레이 24ch + 50A x3 | ✅ 정상 | 구역밸브 12 + 펌프 1 + 호스건 1 |
 
 ---
@@ -150,25 +170,15 @@
 
 ---
 
-## 🗂 기술 부채 & 개선 여지
-
-| 항목 | 우선순위 | 설명 |
-|------|---------|------|
-| app.py Blueprint 분리 | 🔴 중요 | 1,777줄 단일 파일 → Blueprint 4개 분리 권장 (Stage 9 전) |
-| SensorMonitor.start() 미사용 | 🟡 중간 | periodic_data_sender가 센서 샘플링까지 담당 — 역할 정리 필요 |
-| SQLite 마이그레이션 | 🟡 중간 | 현재 CSV 기반 → 조회 성능 한계 (Stage 10) |
-| scenarios.py 역할 미명확 | 🟡 중간 | 실제 서비스 경로 연결 여부 확인 필요 |
-| rtc_manager dead code | 🟢 낮음 | set_datetime, wait_until → deprecated 처리 권장 |
-
----
-
 ## 🔜 다음 작업 후보
 
 | 작업 | 예상 시간 | 우선순위 |
 |------|-----------|---------|
-| 텔레그램 /restart, /status 텍스트 명령 추가 | ~1시간 | ⭐⭐ |
-| 웹 UI 서버 재시작 버튼 (settings.html) | ~30분 | ⭐⭐ |
-| scenarios.py 역할 확인 및 정리 | ~15분 | ⭐ |
+| BUG-10: 스케줄러 thresholds 오타 수정 | ~5분 | 🟠 즉시 |
+| BUG-11: 핸드건 ↔ 자동관수 인터록 추가 | ~10분 | 🟠 즉시 |
+| BUG-12: SensorMonitor 히스토리 CSV 복원 | ~20분 | 🟡 |
+| BUG-13: 쿨다운 설정 단일화 | ~20분 | 🟡 |
+| scenarios.py 역할 확인 및 정리 | ~15분 | 🟡 |
 | app.py Blueprint 분리 리팩토링 | ~3시간 | ⭐ |
 | Stage 9: EC 센서 기반 양액 자동 제어 | 장기 | 신규 기능 |
 | Stage 10: SQLite 마이그레이션 + PWA | 장기 | 신규 기능 |
@@ -192,6 +202,10 @@ source /home/pi/smart_farm/smart_farm_env/bin/activate
 
 # 웹 접속
 http://192.168.0.111:5000
+
+# API 테스트
+curl -s http://localhost:5000/api/status | python3 -m json.tool
+curl -X POST http://localhost:5000/api/system/restart
 ```
 
 ---
