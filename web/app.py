@@ -17,6 +17,8 @@ import json
 from datetime import datetime, timedelta
 import threading
 import time
+import signal
+import atexit
 
 # BUG-7: 설치 경로 동적 계산 (하드코딩 제거)
 _BASE_DIR = Path(__file__).resolve().parent.parent
@@ -272,6 +274,13 @@ def init_monitoring_system():
                 relay_controller=relay_controller
             )
             print("✅ 토양 센서 & 자동 관수 초기화 완료")
+
+            # ✅ Fix: 탱크 수위 콜백 주입 (미주입 시 탱크 빈 상태에서도 관수 강행됨)
+            def _get_tank1_level():
+                """cached_sensor_data 기반 탱크1 수위 반환"""
+                return cached_sensor_data.get('tank1_level')
+            auto_irrigation.get_tank_level_callback = _get_tank1_level
+            print("✅ Fix: 탱크 수위 콜백 주입 완료")
 
             # ── IrrigationScheduler 초기화 + 모드 복원 ──────────────
             global irrigation_scheduler
@@ -1797,6 +1806,41 @@ def api_system_restart():
     threading.Thread(target=_do_restart, daemon=True).start()
     return jsonify({"success": True, "message": "서버 재시작 요청 완료. 약 10초 후 새로고침하세요."})
 
+# ──────────────────────────────────────────────────────────
+# ✅ Fix: 안전 종료 핸들러 (SIGTERM + atexit)
+#   systemctl restart/stop 시 관수 중단 → 릴레이 OFF → 종료
+# ──────────────────────────────────────────────────────────
+def _emergency_relay_off():
+    """종료 직전 릴레이 강제 OFF (atexit 등록용)"""
+    try:
+        if relay_controller:
+            relay_controller.all_off()
+            print("✅ [종료] 모든 릴레이 OFF 완료")
+    except Exception as _e:
+        print(f"⚠️ [종료] 릴레이 OFF 실패: {_e}")
+
+def _graceful_shutdown(signum, frame):
+    """SIGTERM 수신 시 안전 종료"""
+    sig_name = 'SIGTERM' if signum == signal.SIGTERM else 'SIGINT'
+    print(f"\n🛑 [{sig_name}] 수신 - 안전 종료 시작")
+
+    # 1. 관수 진행 중이면 즉시 중단 플래그 설정
+    try:
+        if auto_irrigation and auto_irrigation.is_irrigating:
+            print("  💧 관수 중단 요청 중...")
+            auto_irrigation._stop_requested = True
+            time.sleep(2)   # irrigate_zone 루프(1초 단위) 감지 대기
+    except Exception as _e:
+        print(f"  ⚠️ 관수 중단 오류: {_e}")
+
+    # 2. 릴레이 강제 OFF
+    _emergency_relay_off()
+
+    print("✅ 안전 종료 완료")
+    sys.exit(0)
+
+atexit.register(_emergency_relay_off)   # 정상 종료 시에도 릴레이 OFF
+
 if __name__ == '__main__':
     print("=" * 60)
     print("🌐 스마트 관수 시스템 웹 대시보드 v2")
@@ -1813,6 +1857,11 @@ if __name__ == '__main__':
         print("⏹️  종료: Ctrl+C")
         print("=" * 60)
         print()
+
+        # ✅ Fix: SIGTERM 핸들러 등록 (메인 스레드에서만 가능)
+        signal.signal(signal.SIGTERM, _graceful_shutdown)
+        signal.signal(signal.SIGINT,  _graceful_shutdown)
+        print("✅ SIGTERM/SIGINT 핸들러 등록 완료")
 
         socketio.run(app, host='0.0.0.0', port=5000,
                      debug=False, use_reloader=False,
