@@ -156,13 +156,17 @@ class AutoIrrigationController:
         check_interval = self.irrigation_cfg.get('check_interval', 600)
 
         while self.is_running:
+            check_start = time.time()
             try:
                 if self.mode == 'auto':
                     self._auto_check_and_irrigate()
             except Exception as e:
                 print(f"❌ 모니터 루프 오류: {e}")
 
-            for _ in range(check_interval):
+            # BUG-15: 관수 소요 시간 제외한 나머지만 대기 (5분 주기 체크 보장)
+            elapsed = int(time.time() - check_start)
+            remaining = max(0, check_interval - elapsed)
+            for _ in range(remaining):
                 if not self.is_running:
                     break
                 time.sleep(1)
