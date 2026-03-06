@@ -240,6 +240,11 @@ class AutoIrrigationController:
         for zone_id in dry_zones:
             if not self.is_running:
                 break
+            # BUG-16: 구역마다 탱크 수위 재체크 (연속 관수 중 수위 저하 대응)
+            tank_ok, tank_msg = self._check_tank_level()
+            if not tank_ok:
+                print(f"⚠️ 탱크 수위 부족 → 나머지 관수 중단: {tank_msg}")
+                break
             self.irrigate_zone(zone_id)
             interval = self.irrigation_cfg.get('zone_interval', 10)
             if zone_id != dry_zones[-1]:
