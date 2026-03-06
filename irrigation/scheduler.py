@@ -152,8 +152,8 @@ class IrrigationScheduler:
         if check_moisture and etype=="routine":
             try:
                 sd = self.controller.get_sensor_data()
-                m  = sd.get(f"zone_{zone_id}",{}).get("moisture",100)
-                th = self.controller.thresholds.get(str(zone_id),40)
+                m  = sd.get(zone_id, {}).get("moisture", 100)
+                th = self.controller.zone_thresholds.get(zone_id, 40.0)
                 if m >= th:
                     logger.info(f"[스케줄러] 수분 충분 스킵: zone={zone_id} {m}%>={th}%"); return
             except Exception as e:
