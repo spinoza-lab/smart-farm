@@ -95,6 +95,8 @@ def periodic_data_sender():
                     'tank2_level': status['tank2_level'],
                     'sensor_type': sensor_monitor.sensor_reader.calibration.get('sensor_type', 'voltage')
                 })
+                # ── BUG-12: sensor_monitor.history에도 추가 ──────────
+                sensor_monitor._add_to_history(status)
                 
                 # 디버깅: status 확인
                 # print(f"🔍 [DEBUG] status 전체: {status}")  # 디버그용
@@ -389,12 +391,14 @@ def get_status():
                     'voltages': [round(v, 3) for v in last_data['voltages']]
                 })
             else:
-                # 히스토리가 아직 없으면 기본값
+                # ── BUG-12: 히스토리 없을 때 cached_sensor_data fallback ──
                 status.update({
-                    'tank1_level': 0.0,
-                    'tank2_level': 0.0,
-                    'voltages': [0.0, 0.0, 0.0, 0.0]
+                    'tank1_level': round(cached_sensor_data.get('tank1_level', 0.0), 1),
+                    'tank2_level': round(cached_sensor_data.get('tank2_level', 0.0), 1),
+                    'voltages': [round(v, 3) for v in cached_sensor_data.get('voltages', [0.0, 0.0, 0.0, 0.0])]
                 })
+                if cached_sensor_data.get('timestamp'):
+                    status['timestamp'] = cached_sensor_data['timestamp']
         else:
             # 모니터링 꺼져있으면 기본값
             status.update({
