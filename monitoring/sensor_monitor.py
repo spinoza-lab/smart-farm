@@ -102,7 +102,7 @@ class SensorMonitor:
         
         # 마지막 알림 시간 (중복 방지)
         self.last_alert_time = {}
-        self.alert_cooldown = 300  # 5분 쿨다운
+        self.alert_cooldown = self.config.get('alert_cooldown', 300)  # BUG-13: config에서 읽기 (기본 5분)
         
         print(f"✅ 체크 간격: {self.check_interval}초")
         print(f"✅ 샘플링: {self.sample_count}회 × {self.sample_interval:.1f}초 간격")
