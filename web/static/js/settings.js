@@ -1361,23 +1361,12 @@ function loadServerInfo() {
         const mon = sys.monitoring_active
             ? '<span class="badge bg-success px-2">✅ 활성</span>'
             : '<span class="badge bg-danger px-2">⛔ 비활성</span>';
-        // 수위: cached_sensor_data 기반 (SocketIO와 동일한 소스)
-        const t1  = (sys.tank1_level !== undefined && sys.tank1_level !== null)
-            ? sys.tank1_level.toFixed(1) + '%'
-            : (irr.data && irr.data.tank1_level !== undefined
-                ? irr.data.tank1_level.toFixed(1) + '%' : '--');
-        const t2  = (sys.tank2_level !== undefined && sys.tank2_level !== null)
-            ? sys.tank2_level.toFixed(1) + '%'
-            : (irr.data && irr.data.tank2_level !== undefined
-                ? irr.data.tank2_level.toFixed(1) + '%' : '--');
         const mode = irr.data ? irr.data.mode || '--' : '--';
         const irrigating = irr.data ? (irr.data.is_irrigating ? '💧 관수 중' : '대기 중') : '--';
         body.innerHTML =
             '<table class="table table-sm mb-0">' +
             '<tr><th>마지막 업데이트</th><td>' + ts + '</td></tr>' +
             '<tr><th>모니터링</th><td>' + mon + '</td></tr>' +
-            '<tr><th>물탱크 (Tank1)</th><td>' + t1 + '</td></tr>' +
-            '<tr><th>양액탱크 (Tank2)</th><td>' + t2 + '</td></tr>' +
             '<tr><th>관수 모드</th><td>' + mode + '</td></tr>' +
             '<tr><th>관수 상태</th><td>' + irrigating + '</td></tr>' +
             '</table>';
