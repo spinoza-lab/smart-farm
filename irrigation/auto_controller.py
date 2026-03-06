@@ -265,13 +265,6 @@ class AutoIrrigationController:
         if self.is_irrigating:
             return False, f"이미 관수 중 (구역 {self.current_zone})"
 
-        # ── BUG-11: 핸드건 인터록 ────────────────────────────
-        if self.relay_controller and hasattr(self.relay_controller, 'get_hand_gun_status'):
-            if self.relay_controller.get_hand_gun_status():
-                logger.warning(f"⚠️ 핸드건 ON 중 → 관수 차단 (zone={zone_id}, trigger={trigger})")
-                return False, "핸드건 사용 중 - 관수 불가"
-        # ────────────────────────────────────────────────────
-
         duration = duration or self.irrigation_cfg.get('irrigation_duration', 300)
 
         print(f"\n💧 구역 {zone_id} 관수 시작 ({duration}초)")
