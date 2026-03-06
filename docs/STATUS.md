@@ -1,7 +1,7 @@
 # 📋 Smart Farm 프로젝트 현황 노트
 
 > 최종 업데이트: 2026-03-06
-> 버전: v3.7 (안전성 강화)
+> 버전: v3.8 (버그 수정 완료)
 > 작업 세션 간 컨텍스트 유지를 위한 내부 노트
 
 ---
@@ -34,13 +34,13 @@
 
 | ID | 내용 | 파일 | 커밋 |
 |---|---|---|---|
-| BUG-1 | 토양센서 읽기 실패 시 시뮬레이션 모드 아닐 경우 관수 중단 + 텔레그램 경고 | irrigation/auto_controller.py | 9637b14 |
+| BUG-1 | 토양센서 읽기 실패 시 관수 중단 + 텔레그램 경고 | irrigation/auto_controller.py | 9637b14 |
 | BUG-2 | cooldown_seconds 즉시 반영 누락 + send_message → send 오타 수정 | web/app.py, monitoring/alert_manager.py | 9637b14 |
 | BUG-1b | 센서 오류 알림 무한 반복 방지 — 30분(1800초) 쿨다운 추가 | irrigation/auto_controller.py | 33631ae |
 | BUG-3 | rtc_manager.set_datetime() no-op 경고 로그 추가 | hardware/rtc_manager.py | 5195101 |
 | BUG-4 | rtc_manager.wait_until() 메인스레드 호출 시 즉시 abort 가드 추가 | hardware/rtc_manager.py | 5195101 |
 | BUG-5 | periodic_data_sender 스레드 종료 시 watchdog 자동 재시작 (30초 내) | web/app.py | 422be23 |
-| BUG-6 | 중복 알림 가능성 확인 → sensor_monitor 콜백 미등록, 실제 중복 없음 확인 | (해소) | 5195101 |
+| BUG-6 | 중복 알림 가능성 확인 → 실제 중복 없음 확인 (해소) | (해소) | 5195101 |
 | BUG-7 | 하드코딩 절대경로 /home/pi/smart_farm → _BASE_DIR 동적화 (8개 파일) | 하단 참조 | 5195101 |
 | Cache | JS/CSS 캐시 버스팅 — 서버 시작 타임스탬프 기반 ?v={{ cache_ver }} | web/app.py, 4개 템플릿 | 5195101 |
 | Jinja2 | url_for()?v= 잘못된 위치 → url_for() }}?v= 수정 (SyntaxError 해결) | 4개 템플릿 | defbdea |
@@ -55,7 +55,7 @@
 | Stage-8.8 | 웹 UI 서버 재시작 버튼 추가 (시스템 관리 탭) | web/app.py, settings.html, settings.js | f5a2a84 |
 | Stage-8.8b | system-pane 탭 위치 수정 (alerts 패널 내부 중첩 버그) | web/templates/settings.html | 5ae3b11 |
 | Stage-8.8c | confirmRestart 함수 미정의 오류 수정 (settings.js에 추가) | web/static/js/settings.js | fd5b891 |
-| Stage-8.8d | 서버 정보 카드 탱크 수위 항목 제거 (불필요 정보 정리) | web/static/js/settings.js | (미커밋) |
+| Stage-8.8d | 서버 정보 카드 탱크 수위 항목 제거 (불필요 정보 정리) | web/static/js/settings.js | 2032716 |
 
 ---
 
@@ -63,8 +63,8 @@
 
 | ID | 내용 | 파일 | 커밋 |
 |---|---|---|---|
-| BUG-8 | 탱크 수위 콜백 미주입 — 탱크 빈 상태에서도 관수 강행 버그 | web/app.py | (금일) |
-| BUG-9 | SIGTERM 수신 시 안전 종료 핸들러 미구현 — 재시작 중 펌프 방치 위험 | web/app.py | (금일) |
+| BUG-8 | 탱크 수위 콜백 미주입 — 탱크 빈 상태에서도 관수 강행 버그 | web/app.py | 67ff511 |
+| BUG-9 | SIGTERM 수신 시 안전 종료 핸들러 미구현 — 재시작 중 펌프 방치 위험 | web/app.py | 67ff511 |
 
 **BUG-8 상세:**
 - `auto_irrigation._check_tank_level()`이 `get_tank_level_callback` 존재 여부만 확인
@@ -78,14 +78,37 @@
 
 ---
 
-## 🟠 미수정 항목 (발견됨, 작업 예정)
+### v3.8 버그 수정 (2026-03-06)
 
-| ID | 내용 | 파일 | 영향 | 우선순위 |
-|---|---|---|---|---|
-| BUG-10 | 스케줄러 `check_moisture` 기능 무력화 — `self.controller.thresholds` 오타 (실제: `zone_thresholds`) | irrigation/scheduler.py | check_moisture=True 설정 시 항상 기본값 40% 사용 | 🟠 |
-| BUG-11 | 핸드건 ON 상태에서 자동관수 인터록 없음 — 펌프 동시 동작 가능 | hardware/relay_controller.py, irrigation/auto_controller.py | 핸드건 + 자동관수 동시 실행 가능성 | 🟠 |
-| BUG-12 | SensorMonitor.history 재시작마다 초기화 — /api/status 재시작 직후 0.0% 반환 | monitoring/sensor_monitor.py | 서버 재시작 후 수위 표시 부정확 | 🟡 |
-| BUG-13 | 알림 쿨다운 설정이 3곳에 분산 (SensorMonitor/AlertManager/auto_controller) — UI 설정값 반영 불일치 가능 | 여러 파일 | 알림 동작 예측 어려움 | 🟡 |
+| ID | 내용 | 파일 | 커밋 |
+|---|---|---|---|
+| BUG-10 | 스케줄러 `thresholds` → `zone_thresholds` 오타 수정 + zone_id 키 타입 수정 | irrigation/scheduler.py | 0a7e504 |
+| BUG-11 | 핸드건 ON 중 자동관수 차단 인터록 추가 (`irrigate_zone` 진입 가드) | irrigation/auto_controller.py | 550672e |
+| BUG-12 | 재시작 후 `/api/status` 0.0% 반환 버그 수정 | web/app.py | c8234bb |
+| BUG-13 | SensorMonitor `alert_cooldown` 하드코딩 → config 읽기 수정 | monitoring/sensor_monitor.py | 3c49fd1 |
+
+**BUG-10 상세:**
+- `scheduler.py`의 `check_moisture` 로직에서 `self.controller.thresholds` 오타 (실제 속성명: `zone_thresholds`)
+- zone_id 키 타입 불일치: `str(zone_id)` → `zone_id` (int), `f"zone_{zone_id}"` → `zone_id` (int)
+- 결과: check_moisture=True 스케줄 실행 시 항상 기본값 40% 사용 → 실제 수분 무시하고 관수 강행
+
+**BUG-11 상세:**
+- `hand_gun_on()` 실행 후 auto_controller에 핸드건 상태 미통보
+- 자동관수 타이밍 겹치면 펌프 동시 작동 가능
+- 수정: `irrigate_zone()` 진입부에 `relay_controller.get_hand_gun_status()` 체크 추가
+- 효과: 자동/스케줄러/텔레그램 경로 모두 차단
+
+**BUG-12 상세:**
+- `periodic_data_sender`가 `sensor_monitor._collect_sensor_data()`만 호출하고 `_add_to_history()` 미호출
+- → `sensor_monitor.history`는 항상 빈 리스트 → `/api/status`가 0.0% 반환
+- 수정 ①(근본): `periodic_data_sender`에 `sensor_monitor._add_to_history(status)` 추가
+- 수정 ②(즉각): `/api/status` history 없을 때 `cached_sensor_data` fallback 추가
+- 검증: `sudo systemctl restart` 후 15초 내 `tank1_level: 55.2%` 정상 반환 확인 ✅
+
+**BUG-13 상세:**
+- 알림 쿨다운이 3곳에 분산: `SensorMonitor`(300초 하드코딩), `AlertManager`(300초 파라미터), `AutoIrrigationController`(1800초 config)
+- 수정: `SensorMonitor.alert_cooldown = 300` → `self.config.get('alert_cooldown', 300)` 으로 변경
+- 미완: AlertManager/AutoController 쿨다운은 각각 별도 config 파일 사용 중 (완전 단일화는 향후 리팩토링)
 
 ---
 
@@ -93,7 +116,8 @@
 
 | 항목 | 우선순위 | 설명 |
 |------|---------|------|
-| app.py Blueprint 분리 | 🔴 중요 | 현재 ~1,870줄 단일 파일 → Blueprint 4개 분리 권장 (Stage 9 전) |
+| app.py Blueprint 분리 | 🔴 중요 | 현재 ~1,900줄 단일 파일 → Blueprint 4개 분리 권장 (Stage 9 전) |
+| 쿨다운 설정 완전 단일화 | 🟠 중간 | AlertManager/AutoController 쿨다운도 단일 config 키로 통합 |
 | SensorMonitor.start() 미사용 | 🟡 중간 | periodic_data_sender가 센서 샘플링까지 담당 — 역할 정리 필요 |
 | SQLite 마이그레이션 | 🟡 중간 | 현재 CSV 기반 → 조회 성능 한계 (Stage 10) |
 | scenarios.py 역할 미명확 | 🟡 중간 | 실제 서비스 경로 연결 여부 확인 필요 |
@@ -101,7 +125,7 @@
 
 ---
 
-## 📂 파일별 변경 상세 (v3.7 추가분)
+## 📂 파일별 변경 상세 (v3.7~v3.8 추가분)
 
 ### web/app.py
 - `import signal`, `import atexit` 추가 (BUG-9)
@@ -111,29 +135,47 @@
 - `atexit.register(_emergency_relay_off)` — 이중 안전망 (BUG-9)
 - `auto_irrigation.get_tank_level_callback = _get_tank1_level` 주입 (BUG-8)
 - `/api/system/restart` POST 엔드포인트 추가 (Stage-8.8)
+- `periodic_data_sender`에 `sensor_monitor._add_to_history(status)` 추가 (BUG-12)
+- `/api/status` history 없을 때 `cached_sensor_data` fallback 추가 (BUG-12)
 
 ### web/templates/settings.html
 - 시스템 관리 탭 (system-pane) 추가 (Stage-8.8)
 - system-pane 위치 수정: alerts 패널 외부로 이동 (Stage-8.8b)
 
 ### web/static/js/settings.js
-- `confirmRestart()` 함수 추가 — 팝업 확인 → POST /api/system/restart → 15초 카운트다운 → 새로고침 (Stage-8.8c)
-- `loadServerInfo()` 함수 추가 — /api/status + /api/irrigation/status 병렬 호출, 모니터링/관수 상태 표시 (Stage-8.8c)
+- `confirmRestart()` 함수 추가 (Stage-8.8c)
+- `loadServerInfo()` 함수 추가 — /api/status + /api/irrigation/status 병렬 호출 (Stage-8.8c)
 - 서버 정보 카드 탱크 수위 항목 제거 (Stage-8.8d)
+
+### irrigation/scheduler.py
+- `check_moisture` 로직: `thresholds` → `zone_thresholds` 오타 수정 (BUG-10)
+- zone_id 키 타입: `str(zone_id)` → `zone_id`, `f"zone_{zone_id}"` → `zone_id` (BUG-10)
+
+### irrigation/auto_controller.py
+- `irrigate_zone()` 진입부에 핸드건 인터록 가드 추가 (BUG-11)
+- `relay_controller.get_hand_gun_status()` True 시 `return False, "핸드건 사용 중 - 관수 불가"` (BUG-11)
+
+### monitoring/sensor_monitor.py
+- `self.alert_cooldown = 300` → `self.config.get('alert_cooldown', 300)` (BUG-13)
 
 ---
 
-## 🔖 커밋 이력 (전체)
+## 🔖 커밋 이력 (최신순)
 
 | 해시 | 내용 |
 |------|------|
-| (금일) | fix(safety): 탱크 수위 콜백 주입 + SIGTERM 안전 종료 핸들러 추가 |
+| 3c49fd1 | fix(BUG-13): SensorMonitor alert_cooldown 하드코딩 → config 읽기 수정 |
+| c8234bb | fix(BUG-12): 재시작 후 /api/status 0.0% 반환 버그 수정 |
+| 550672e | fix(BUG-11): 핸드건 ON 중 자동관수 차단 인터록 추가 |
+| 0a7e504 | fix(BUG-10): 스케줄러 thresholds→zone_thresholds 오타 수정 + zone_id 키 타입 수정 |
+| 67ff511 | fix(safety): 탱크 수위 콜백 주입 + SIGTERM 안전 종료 핸들러 추가 (BUG-8, BUG-9) |
+| a6e86a6 | docs: STATUS.md v3.7 갱신 (BUG-8~13, Stage-8.7~8.8 기록) |
+| 2032716 | fix(Stage 8.8): 서버 정보 카드에서 탱크 수위 항목 제거 |
 | fd5b891 | fix(Stage 8.8): system-pane 위치 수정 + confirmRestart 함수 추가 |
 | 5ae3b11 | fix(Stage 8.8): 시스템 관리 탭 위치 수정 |
 | f5a2a84 | feat(Stage 8.8): 웹 UI 서버 재시작 버튼 추가 |
 | d53a91a | fix: /restart 무한재시작 버그 수정 (offset 초기화) |
 | 3f3bb36 | feat(Stage 8.7): 텔레그램 /status, /restart 텍스트 명령어 추가 |
-| a3b8574 | docs: STATUS.md + README.md 전체 최신화 (v3.6 완료 기록) |
 | 5195101 | fix(v3.6): BUG-3~7 수정 + 캐시버스팅 + 경로 동적화 |
 | 422be23 | fix(BUG-5): periodic_data_sender watchdog 자동 재시작 |
 | 33631ae | fix(BUG-1b): 센서 오류 알림 쿨다운 추가 (30분) |
@@ -161,6 +203,7 @@
 |------|-----|------|
 | 수위 경고 쿨다운 | 3600초 (1시간) | config/notifications.json |
 | 센서 오류 알림 쿨다운 | 1800초 (30분) | config/soil_sensors.json → sensor_alert_cooldown |
+| SensorMonitor 알림 쿨다운 | 300초 기본 (config.alert_cooldown) | config에서 읽음 (BUG-13 수정) |
 | 탱크1 (물탱크) 임계값 | 15% ~ 75% | config/notifications.json |
 | 탱크2 (양액탱크) 임계값 | 10% ~ 80% | config/notifications.json |
 | 자동관수 점검 주기 | 600초 (10분) | config/soil_sensors.json |
@@ -174,11 +217,8 @@
 
 | 작업 | 예상 시간 | 우선순위 |
 |------|-----------|---------|
-| BUG-10: 스케줄러 thresholds 오타 수정 | ~5분 | 🟠 즉시 |
-| BUG-11: 핸드건 ↔ 자동관수 인터록 추가 | ~10분 | 🟠 즉시 |
-| BUG-12: SensorMonitor 히스토리 CSV 복원 | ~20분 | 🟡 |
-| BUG-13: 쿨다운 설정 단일화 | ~20분 | 🟡 |
 | scenarios.py 역할 확인 및 정리 | ~15분 | 🟡 |
+| 쿨다운 설정 완전 단일화 (AlertManager/AutoController) | ~30분 | 🟠 |
 | app.py Blueprint 분리 리팩토링 | ~3시간 | ⭐ |
 | Stage 9: EC 센서 기반 양액 자동 제어 | 장기 | 신규 기능 |
 | Stage 10: SQLite 마이그레이션 + PWA | 장기 | 신규 기능 |
