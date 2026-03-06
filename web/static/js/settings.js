@@ -1332,3 +1332,59 @@ function saveCooldownConfig() {
     })
     .catch(e => showAlert('쿨다운 저장 오류: ' + e.message, 'danger'));
 }
+
+// ── Stage 8.8: 서버 재시작 버튼 ─────────────────────────────
+function confirmRestart() {
+    if (!confirm('서버를 재시작하시겠습니까?\n\n현재 관수 중이면 즉시 중단됩니다.\n확인 후 약 15초 뒤 자동 새로고침됩니다.')) return;
+    const btn = document.querySelector('#system-pane .btn-danger');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>재시작 중...'; }
+    fetch('/api/system/restart', { method: 'POST' })
+        .then(() => {
+            const body = document.getElementById('serverInfoBody');
+            if (!body) { setTimeout(() => location.reload(), 15000); return; }
+            let sec = 15;
+            body.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-danger mb-3" style="width:3rem;height:3rem;"></div><p class="fs-5 fw-bold text-danger">서버 재시작 중...</p><p class="text-muted"><span id="restartCountdown">15</span>초 후 자동 새로고침</p></div>';
+            const iv = setInterval(() => { sec--; const el = document.getElementById('restartCountdown'); if (el) el.textContent = sec; if (sec <= 0) { clearInterval(iv); location.reload(); } }, 1000);
+        })
+        .catch(() => { const body = document.getElementById('serverInfoBody'); if (!body) { setTimeout(() => location.reload(), 15000); return; } let sec = 15; body.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-danger mb-3"></div><p class="text-danger">재시작 중...</p><p><span id="restartCountdown">15</span>초 후 새로고침</p></div>'; const iv = setInterval(() => { sec--; const el = document.getElementById('restartCountdown'); if (el) el.textContent = sec; if (sec <= 0) { clearInterval(iv); location.reload(); } }, 1000); });
+}
+
+function loadServerInfo() {
+    const body = document.getElementById('serverInfoBody');
+    if (!body) return;
+    // /api/status + /api/irrigation/status 병렬 호출
+    Promise.all([
+        fetch('/api/status').then(r => r.json()),
+        fetch('/api/irrigation/status').then(r => r.json())
+    ]).then(([sys, irr]) => {
+        const ts  = sys.timestamp || '--';
+        const mon = sys.monitoring_active
+            ? '<span class="badge bg-success px-2">✅ 활성</span>'
+            : '<span class="badge bg-danger px-2">⛔ 비활성</span>';
+        // 수위: cached_sensor_data 기반 (SocketIO와 동일한 소스)
+        const t1  = (sys.tank1_level !== undefined && sys.tank1_level !== null)
+            ? sys.tank1_level.toFixed(1) + '%'
+            : (irr.data && irr.data.tank1_level !== undefined
+                ? irr.data.tank1_level.toFixed(1) + '%' : '--');
+        const t2  = (sys.tank2_level !== undefined && sys.tank2_level !== null)
+            ? sys.tank2_level.toFixed(1) + '%'
+            : (irr.data && irr.data.tank2_level !== undefined
+                ? irr.data.tank2_level.toFixed(1) + '%' : '--');
+        const mode = irr.data ? irr.data.mode || '--' : '--';
+        const irrigating = irr.data ? (irr.data.is_irrigating ? '💧 관수 중' : '대기 중') : '--';
+        body.innerHTML =
+            '<table class="table table-sm mb-0">' +
+            '<tr><th>마지막 업데이트</th><td>' + ts + '</td></tr>' +
+            '<tr><th>모니터링</th><td>' + mon + '</td></tr>' +
+            '<tr><th>물탱크 (Tank1)</th><td>' + t1 + '</td></tr>' +
+            '<tr><th>양액탱크 (Tank2)</th><td>' + t2 + '</td></tr>' +
+            '<tr><th>관수 모드</th><td>' + mode + '</td></tr>' +
+            '<tr><th>관수 상태</th><td>' + irrigating + '</td></tr>' +
+            '</table>';
+    }).catch(() => { body.innerHTML = '<p class="text-danger text-center">서버 응답 없음</p>'; });
+}
+document.addEventListener('DOMContentLoaded', function() {
+    const t = document.getElementById('system-tab');
+    if (t) t.addEventListener('shown.bs.tab', loadServerInfo);
+});
+// ── /Stage 8.8 ───────────────────────────────────────────────
