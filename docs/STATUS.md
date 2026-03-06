@@ -83,7 +83,7 @@
 | ID | 내용 | 파일 | 커밋 |
 |---|---|---|---|
 | BUG-10 | 스케줄러 `thresholds` → `zone_thresholds` 오타 수정 + zone_id 키 타입 수정 | irrigation/scheduler.py | 0a7e504 |
-| BUG-11 | 핸드건 ON 중 자동관수 차단 인터록 추가 (`irrigate_zone` 진입 가드) | irrigation/auto_controller.py | 550672e |
+| BUG-11 | 핸드건 인터록 추가 후 제거 — 핸드건은 지하수 직결 독립 배관 확인, 인터록 불필요 | irrigation/auto_controller.py | 550672e→3a58b90 |
 | BUG-12 | 재시작 후 `/api/status` 0.0% 반환 버그 수정 | web/app.py | c8234bb |
 | BUG-13 | SensorMonitor `alert_cooldown` 하드코딩 → config 읽기 수정 | monitoring/sensor_monitor.py | 3c49fd1 |
 
