@@ -270,8 +270,6 @@ class SensorMonitor:
             tank2_level = 100.0
         else:
             tank2_level = round(((tank2_voltage - tank2_empty) / (tank2_full - tank2_empty)) * 100, 1)
-        else:
-            tank2_level = round(((tank2_voltage - tank2_empty) / (tank2_full - tank2_empty)) * 100, 1)
         
         data = {
             'timestamp': timestamp,
