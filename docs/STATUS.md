@@ -1,7 +1,7 @@
 # 📋 Smart Farm 프로젝트 현황 노트
 
 > 최종 업데이트: 2026-03-09
-> 버전: v4.1 (Blueprint 리팩터링 + BUG-14 P0/P1 완료)
+> 버전: v4.1 (Blueprint 리팩터링 + BUG-14 P0/P1/P2 완료)
 > 작업 세션 간 컨텍스트 유지를 위한 내부 노트
 
 ---
@@ -13,10 +13,33 @@
 |---|---|---|---|
 | Refactor | Blueprint 분리 (app.py 3000줄 → 5개 bp) | web/blueprints/*.py, web/globals.py | 592fa92 |
 | BUG-FIX-TN | auto_controller telegram_notifier 탐색 실패 | web/app.py | 19fa53b |
-| BUG-FIX-Z0 | zone_id=0 저장/실행/표시 불가 | irrigation_bp.py, scheduler.py, settings.js, telegram_notifier.py | 여러 커밋 |
+| BUG-FIX-Z0 | zone_id=0 저장/실행/표시 불가 | irrigation_bp.py, scheduler.py, settings.js, telegram_notifier.py | 846b47c, f900904 |
 | BUG-14 P0-1 | I2C 재시도+fallback+오류통계 | hardware/sensor_reader.py | a299b82 |
 | BUG-14 P0-2 | None 샘플 필터링 + SensorReadError | monitoring/sensor_monitor.py | 501df2a, 81c7e71 |
 | BUG-14 P1 | None 전압 허용 + 연속 카운터 + 복구 감지 | monitoring/alert_manager.py | bd831c1 |
+| BUG-14 P2 | /api/status sensor_errors·sensor_stats 추가 | web/blueprints/monitoring_bp.py | 592a6ba |
+
+---
+
+### BUG-14 완료 상세 — I2C 센서 장애 대응 (전체 완료 ✅)
+
+**오류 처리 흐름 (완성):**
+```
+I2C 읽기 실패
+  → sensor_reader: 재시도 2회(50ms 간격) → fallback(마지막 정상값) / None 반환
+  → sensor_monitor: None 샘플 필터링 → 유효 샘플 < min_valid_samples → SensorReadError
+  → _monitor_loop: 10초 대기 후 재시도 (서비스 중단 없음)
+  → alert_manager: 1회 WARNING / 5회 CRITICAL Telegram 알림 + 복구 시 INFO 알림
+  → /api/status: voltages[null], sensor_errors{chX: true}, sensor_stats 노출
+```
+
+| 단계 | 커밋 | 파일 | 내용 |
+|------|------|------|------|
+| P0-1 | `a299b82` | `hardware/sensor_reader.py` | I2C 재시도 2회 + fallback + 오류통계 |
+| P0-2 | `501df2a` | `monitoring/sensor_monitor.py` | None 샘플 필터링 + SensorReadError |
+| P0-2 수정 | `81c7e71` | `monitoring/sensor_monitor.py` | SyntaxError 잔재 else 제거 |
+| P1 | `bd831c1` | `monitoring/alert_manager.py` | None 전압 허용 + 연속 카운터 + 복구 감지 |
+| P2 | `592a6ba` | `web/blueprints/monitoring_bp.py` | /api/status sensor_errors·sensor_stats |
 
 ---
 
@@ -29,19 +52,15 @@
 
 ---
 
-## 🔴 미완료 / 진행 예정
+## 🟡 미완료 / 진행 예정
 
-### BUG-14 P2 (다음 작업)
-- `/api/status` 응답에 `sensor_errors`, `sensor_stats` 필드 추가
-- 웹 대시보드에 센서 오류 채널 시각적 표시
-
----
-
-## 🗂 기술 부채 & 개선 여지
+### 기술 부채
 | 항목 | 우선순위 | 설명 |
 |------|---------|------|
-| BUG-14 P2 | 🔴 중요 | /api/status 센서 오류 필드 + UI 표시 |
+| 대시보드 센서 오류 UI | 🟠 중간 | 오류 채널 시각적 표시 (빨간 배지 등) |
 | 쿨다운 설정 완전 단일화 | 🟠 중간 | AlertManager/AutoController 쿨다운 단일 config 키 통합 |
+| sensor_voltage_thresholds | 🟠 중간 | 0.1V/3.2V 하드코딩 → notifications.json으로 이동 |
+| globals.py SensorErrorState | 🟡 낮음 | 설계는 있으나 미구현 — 필요 시 추가 |
 | SQLite 마이그레이션 | 🟡 중간 | 현재 CSV 기반 → 조회 성능 한계 (Stage 10) |
 | rtc_manager dead code | 🟢 낮음 | set_datetime, wait_until → deprecated 처리 권장 |
 
@@ -50,14 +69,17 @@
 ## 🔖 커밋 이력 (최신순, v4.1 기준)
 | 해시 | 내용 |
 |------|------|
+| `592a6ba` | feat(api): /api/status sensor_errors·sensor_stats 추가 (BUG-14 P2) |
+| `e88f333` | docs: v4.1 문서 업데이트 |
 | `bd831c1` | fix(alert): None 전압 허용 + 연속 오류 카운터 + 복구 감지 (BUG-14 P1) |
 | `81c7e71` | fix(sensor): 패치③ 잔재 else 제거 (SyntaxError 수정) |
 | `501df2a` | fix(sensor): None 샘플 필터링 + SensorReadError + 수위 None 처리 (BUG-14 P0-2) |
 | `a299b82` | fix(sensor): I2C 예외 처리 + 재시도(2회) + fallback + 오류 통계 (BUG-14 P0-1) |
+| `f900904` | fix(zone_id=0): irrigation_bp/scheduler/telegram_notifier 수정 |
+| `846b47c` | fix(zone_id=0): Python/JS falsy 0 처리 수정 |
 | `19fa53b` | fix: auto_controller telegram_notifier 탐색 실패 수정 |
 | `592fa92` | refactor: Blueprint 분리 (web/app.py → 5개 blueprint) |
 | `32d76d5` | feat(S9): 관수 주기 관리 시스템 구현 |
-| `473fc9f` | docs: STATUS.md BUG-11 인터록 제거 내역 반영 |
 | `3c49fd1` | fix(BUG-13): SensorMonitor alert_cooldown 하드코딩 → config 읽기 수정 |
 | `c8234bb` | fix(BUG-12): 재시작 후 /api/status 0.0% 반환 버그 수정 |
 | `0a7e504` | fix(BUG-10): 스케줄러 thresholds→zone_thresholds 오타 수정 |
@@ -95,36 +117,23 @@
 ---
 
 ## 🔜 다음 작업 후보 (우선순위순)
-| ID | 작업 | 예상 시간 | 우선순위 |
-|---|------|-----------|---------|
-| BUG-14 P2 | /api/status 센서 오류 필드 + 웹 UI 표시 | ~30분 | 🔴 |
-| - | PR 생성: refactor/blueprint → main | ~10분 | 🔴 |
-| - | 쿨다운 설정 완전 단일화 | ~30분 | 🟠 |
-| - | Stage 10: SQLite 마이그레이션 + PWA | 장기 | 신규 기능 |
+| 작업 | 예상 시간 | 우선순위 |
+|------|-----------|---------|
+| 쿨다운 설정 완전 단일화 | ~30분 | 🟠 |
+| sensor_voltage_thresholds config 분리 | ~20분 | 🟠 |
+| 대시보드 센서 오류 UI 표시 | ~1시간 | 🟠 |
+| Stage 10: SQLite 마이그레이션 + PWA | 장기 | 신규 기능 |
 
 ---
 
 ## 📜 주요 명령어
 ```bash
-# 서비스 관리
 sudo systemctl restart smart-farm.service
 sudo systemctl status smart-farm.service
 journalctl -u smart-farm.service -f
-
-# 로그 확인
 journalctl -u smart-farm.service -n 50 --no-pager
-tail -f /home/pi/smart_farm/logs/alerts.log
-
-# 가상환경
-source /home/pi/smart_farm/smart_farm_env/bin/activate
-
-# 웹 접속
-http://192.168.0.111:5000
-
-# API 테스트
+source /home/pi/smart_farm_env/bin/activate
 curl -s http://localhost:5000/api/status | python3 -m json.tool
-curl -s http://localhost:5000/api/notifications/status | python3 -m json.tool
-curl -X POST http://localhost:5000/api/notifications/test
 ```
 
 ---

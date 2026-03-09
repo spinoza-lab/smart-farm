@@ -114,6 +114,21 @@
 - [BUG-15] _monitor_loop 체크 주기 수정 - 관수 소요시간 제외 후 잔여시간만 대기
 - [BUG-16] 다중 구역 연속 관수 중 구역마다 탱크 수위 재체크 추가
 
+
+### 🐛 BUG-14 P2: /api/status 센서 오류 정보 추가 (커밋 `592a6ba`)
+
+**파일**: `web/blueprints/monitoring_bp.py`
+
+#### 변경 내용
+- **voltages 배열 None 보존**: I2C 오류 채널은 `0.0` 대신 `null` 반환
+  - `last_data` 경로(라인 29) + `cached_sensor_data` 폴백 경로(라인 35) 둘 다 수정
+- **`sensor_errors` 필드 추가**: 채널별 연속 오류 여부 `{ch0~ch3: bool}`
+  - `alert_manager.sensor_error_counts` 기반
+- **`sensor_stats` 필드 추가**: 채널별 통계
+  - `sensor_reader.get_error_stats()` 기반
+  - `{consecutive_errors, total_reads, error_reads, success_rate, last_valid_voltage}`
+- 모두 `try/except`로 감싸 미초기화 상태에서도 안전하게 동작
+
 ## v4.0 (2026-03-09) `32d76d5`
 - [Stage 9] 관수 주기 관리 시스템 구현
   - 구역별 마지막 관수 시간 추적 (last_irrigated_time 딕셔너리)
