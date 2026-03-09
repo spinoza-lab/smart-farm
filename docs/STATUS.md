@@ -368,3 +368,23 @@ curl -X POST http://localhost:5000/api/system/restart
 ---
 
 *이 파일은 작업 세션 간 컨텍스트 유지를 위한 내부 노트입니다.*
+
+## v4.0 변경사항 (2026-03-09)
+
+### Stage 9: 관수 주기 관리 시스템 (feat(S9), 커밋 32d76d5)
+- `last_irrigated_time` 딕셔너리 — 구역별 마지막 관수 시간 메모리 관리
+- `_load_last_irrigated_times()` — 재시작 후 CSV에서 자동 복원
+- `update_last_irrigated_time()` — 스케줄러에서 완료 후 호출
+- 3단계 자동관수 판단 로직:
+  - elapsed < 6h → 미관수 주기 (스킵)
+  - 6h ≤ elapsed < 3일 → 습도 기반 관수
+  - elapsed ≥ 3일 → 필수관수 (강제 실행)
+- `soil_sensors.json` 구역별 `min/max_irrigation_interval` 추가
+- `scheduler.py` 스케줄 완료 후 `update_last_irrigated_time()` 연결
+
+### BUG-17 (WONTFIX)
+- 스케줄+자동 연속 과관수 문제 → Stage 9 미관수 주기(6h)로 근본 해결됨
+
+### scenarios.py
+- 파일 미존재, 참조 없음 → 검토 항목 제거
+
