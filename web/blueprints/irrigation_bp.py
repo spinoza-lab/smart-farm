@@ -290,7 +290,7 @@ def add_schedule():
         stype    = body.get('type', 'schedule')
         zone_id  = int(body.get('zone_id', 0))
         duration = int(body.get('duration', 300))
-        if not zone_id:
+        if zone_id is None:
             return jsonify({'success': False, 'error': 'zone_id 필수'}), 400
         data      = _load_schedules()
         schedules = data.get('schedules', [])

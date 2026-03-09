@@ -136,8 +136,19 @@ class IrrigationScheduler:
             if self._queue and self._queue[0].get("id")==job.get("id"): self._queue.pop(0)
 
     def _execute_job(self, entry):
-        zone_id        = entry.get("zone_id",1)
-        duration       = entry.get("duration",300)
+        zone_id        = entry.get("zone_id", 1)
+        duration       = entry.get("duration", 300)
+        # zone_id=0: 전체 구역 순차 실행
+        if zone_id == 0:
+            import logging as _log
+            _log.getLogger(__name__).info("[스케줄러] 전체구역 순차 실행 시작")
+            for z in range(1, 13):
+                try:
+                    ok = self.controller.start_zone_irrigation(zone_id=z, duration=duration, trigger="scheduler")
+                    _log.getLogger(__name__).info(f"[스케줄러] 전체구역 zone={z} ok={ok}")
+                except Exception as e:
+                    _log.getLogger(__name__).warning(f"[스케줄러] 전체구역 zone={z} 오류: {e}")
+            return
         check_moisture = entry.get("check_moisture",False)
         eid            = entry.get("id","?")
         etype          = entry.get("type","schedule")

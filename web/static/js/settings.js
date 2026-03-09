@@ -657,7 +657,7 @@ function updateSchedDurLabel() {
 // ── ⑩ 스케줄 저장 ─────────────────────────────────────────
 function saveSchedule() {
     const zone_id = parseInt(document.getElementById('schedZone').value);
-    if (!zone_id) { showAlert('구역을 선택하세요.', 'warning'); return; }
+    if (zone_id === null || isNaN(zone_id) || document.getElementById('schedZone').value === '') { showAlert('구역을 선택하세요.', 'warning'); return; }
 
     const time    = document.getElementById('schedTime').value;
     if (!time)    { showAlert('시작 시간을 입력하세요.', 'warning'); return; }
