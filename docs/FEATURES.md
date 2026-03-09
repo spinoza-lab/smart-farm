@@ -201,3 +201,32 @@ IrrigationScheduler
 - 구역·트리거 유형 필터
 - 전체 관수 이력 테이블
 - **CSV 다운로드** 버튼 (날짜 필터 적용)
+
+---
+
+## 관수 주기 관리 시스템 (v4.0 / Stage 9)
+
+### 3단계 자동관수 판단 로직
+
+자동관수 체크 시 각 구역의 마지막 관수 시간 기준으로 3단계 판단합니다.
+
+| 단계 | 조건 | 동작 |
+|------|------|------|
+| 1단계 (미관수 주기) | elapsed < min_irrigation_interval | 무조건 스킵 (습도 무관) |
+| 2단계 (일반 판단) | min <= elapsed < max | 습도 < 임계값이면 관수 |
+| 3단계 (필수관수) | elapsed >= max_irrigation_interval | 센서 오류 무관 강제 관수 |
+
+- elapsed = 현재 시각 - 마지막 관수 완료 시각
+- 관수 기록 없음(최초 설치) -> elapsed = inf -> 즉시 관수 가능
+
+### 마지막 관수 시간 통합 관리
+
+- 자동관수 완료 시 -> irrigate_zone() 내부에서 자동 갱신
+- 스케줄/루틴 완료 시 -> scheduler.py에서 update_last_irrigated_time() 호출
+- 재시작 복원 -> data/irrigation_history.csv에서 구역별 최신 성공 기록 로드
+
+### 구역별 주기 설정 (config/soil_sensors.json)
+
+각 센서 항목에 아래 두 필드 추가됨:
+  min_irrigation_interval: 21600   (기본 6시간, 초 단위)
+  max_irrigation_interval: 259200  (기본 3일, 초 단위)

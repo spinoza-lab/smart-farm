@@ -139,3 +139,46 @@
   - `GET /api/notifications/config` 응답에 `cooldown_seconds` 포함
   - `settings.html`: 알림 설정 탭에 쿨다운 UI 추가 (분 단위 입력 + 프리셋 버튼)
   - `settings.js`: `loadNotificationConfig()`, `saveCooldownConfig()` 함수 추가
+
+## v3.6 후반 (2026-03-05) 9637b14 33631ae 422be23 5195101
+
+- [BUG-1] 토양센서 읽기 실패 시 관수 중단 + 텔레그램 경고
+- [BUG-1b] 센서 오류 알림 무한 반복 방지 - 30분 쿨다운
+- [BUG-2] cooldown_seconds 즉시 반영 누락 + send_message->send 오타 수정
+- [BUG-3~4] rtc_manager no-op 경고 로그 + wait_until() abort 가드
+- [BUG-5] periodic_data_sender watchdog 자동 재시작 (30초)
+- [BUG-7] 하드코딩 절대경로 -> _BASE_DIR 동적화 (8개 파일)
+- [Cache] JS/CSS 캐시 버스팅 (서버 시작 타임스탬프 기반)
+
+## v3.7 (2026-03-05~06) 3f3bb36 f5a2a84 67ff511
+
+- [Stage 8.7] 텔레그램 /status, /restart 텍스트 명령어 추가
+- [Stage 8.8] 웹 UI 서버 재시작 버튼 추가 (시스템 관리 탭)
+- [BUG-8] 탱크 수위 콜백 미주입 수정
+  - auto_irrigation.get_tank_level_callback 주입 추가
+- [BUG-9] SIGTERM 수신 시 안전 종료 핸들러 미구현 수정
+  - _graceful_shutdown() + _emergency_relay_off() + signal/atexit 등록
+
+## v3.8 (2026-03-06) 0a7e504 c8234bb 3c49fd1 473fc9f ac35070 1e6db0a
+
+- [BUG-10] 스케줄러 thresholds -> zone_thresholds 오타 수정 + zone_id 키 타입 수정
+- [BUG-11] 핸드건 인터록 추가 후 제거 - 지하수 직결 독립 배관 확인
+- [BUG-12] 재시작 후 /api/status 0.0% 반환 버그 수정
+  - periodic_data_sender에 _add_to_history() 호출 추가
+  - /api/status history 없을 때 cached_sensor_data fallback 추가
+- [BUG-13] SensorMonitor alert_cooldown 하드코딩 -> config 읽기 수정
+- [BUG-15] _monitor_loop 체크 주기 수정 - 관수 소요시간 제외 후 잔여시간만 대기
+- [BUG-16] 다중 구역 연속 관수 중 구역마다 탱크 수위 재체크 추가
+
+## v4.0 (2026-03-09) 32d76d5
+
+- [Stage 9] 관수 주기 관리 시스템 구현
+  - 구역별 마지막 관수 시간 추적 (last_irrigated_time 딕셔너리)
+  - 재시작 후 CSV(irrigation_history.csv)에서 자동 복원
+  - 3단계 자동관수 판단 로직:
+    - elapsed < min_interval(6h) -> 미관수 주기, 무조건 스킵
+    - min_interval <= elapsed < max_interval(3일) -> 습도 기반 관수
+    - elapsed >= max_interval -> 필수관수, 센서 오류 무관 강제 실행
+  - soil_sensors.json 구역별 min_irrigation_interval, max_irrigation_interval 추가
+  - scheduler.py 스케줄 완료 후 update_last_irrigated_time() 연결
+- [BUG-17 WONTFIX] 스케줄+자동 연속 과관수 -> Stage 9 미관수 주기로 근본 해결
