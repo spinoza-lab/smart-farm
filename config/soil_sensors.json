@@ -13,84 +13,108 @@
       "sensor_address": 1,
       "name": "구역 1",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 2,
       "sensor_address": 2,
       "name": "구역 2",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 3,
       "sensor_address": 3,
       "name": "구역 3",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 4,
       "sensor_address": 4,
       "name": "구역 4",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 5,
       "sensor_address": 5,
       "name": "구역 5",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 6,
       "sensor_address": 6,
       "name": "구역 6",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 7,
       "sensor_address": 7,
       "name": "구역 7",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 8,
       "sensor_address": 8,
       "name": "구역 8",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 9,
       "sensor_address": 9,
       "name": "구역 9",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 10,
       "sensor_address": 10,
       "name": "구역 10",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 11,
       "sensor_address": 11,
       "name": "구역 11",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     },
     {
       "zone_id": 12,
       "sensor_address": 12,
       "name": "구역 12",
       "enabled": true,
-      "moisture_threshold": 44.0
+      "moisture_threshold": 44.0,
+      "min_irrigation_interval": 21600,
+      "max_irrigation_interval": 259200
     }
   ],
   "irrigation": {

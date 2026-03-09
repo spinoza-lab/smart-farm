@@ -162,6 +162,9 @@ class IrrigationScheduler:
         try:
             ok = self.controller.start_zone_irrigation(zone_id=zone_id, duration=duration, trigger="scheduler")
             logger.info(f"[스케줄러] 완료: id={eid} zone={zone_id} ok={ok}")
+            # S9: 스케줄 관수 완료 후 마지막 관수 시간 갱신
+            if ok and hasattr(self.controller, 'update_last_irrigated_time'):
+                self.controller.update_last_irrigated_time(zone_id)
         except Exception as e:
             logger.error(f"[스케줄러] 예외: id={eid}: {e}")
 

@@ -75,6 +75,8 @@ class AutoIrrigationController:
         print(f"   체크 주기: {self.irrigation_cfg.get('check_interval', 600)}초")
         self._init_irrigation_csv()
         self._load_irrigation_history()
+        self.last_irrigated_time = {}   # {zone_id: datetime} — S9
+        self._load_last_irrigated_times()
 
     # ──────────────────────────────────────
     # 설정 로드
@@ -219,6 +221,29 @@ class AutoIrrigationController:
 
         dry_zones = []
         for zone_id, data in sorted(sensor_data.items()):
+            # ── S9: 3단계 관수 주기 판단 ──────────────────────────────────
+            zone_cfg     = next((s for s in self.config.get('sensors', [])
+                                 if s['zone_id'] == zone_id), {})
+            min_interval = zone_cfg.get('min_irrigation_interval', 21600)   # 기본 6h
+            max_interval = zone_cfg.get('max_irrigation_interval', 259200)  # 기본 3일
+
+            last_t  = self.last_irrigated_time.get(zone_id)
+            elapsed = (datetime.now() - last_t).total_seconds() if last_t else float('inf')
+
+            # 1단계: 미관수 주기 내 → 무조건 스킵
+            if elapsed < min_interval:
+                print(f"  구역 {zone_id:2d}: ⏳ 미관수 주기 중 "
+                      f"({elapsed/3600:.1f}h / {min_interval/3600:.0f}h) — 스킵")
+                continue
+
+            # 3단계: 필수관수 주기 초과 → 센서 무관 강제 관수
+            if elapsed >= max_interval:
+                print(f"  구역 {zone_id:2d}: 🚨 필수관수 주기 초과 "
+                      f"({elapsed/86400:.1f}일) — 강제 관수")
+                dry_zones.append(zone_id)
+                continue
+
+            # 2단계: 일반 습도 판단 (min ≤ elapsed < max)
             if not data.get('valid'):
                 print(f"  구역 {zone_id:2d}: ❌ 센서 오류 - {data.get('error')}")
                 continue
@@ -370,6 +395,9 @@ class AutoIrrigationController:
         self._save_to_csv(record)
         if len(self.irrigation_history) > 200:
             self.irrigation_history = self.irrigation_history[-200:]
+        # S9: 관수 성공 시 마지막 관수 시간 갱신
+        if not aborted:
+            self.last_irrigated_time[zone_id] = datetime.now()
 
         if aborted:
             self._log(f"구역 {zone_id} 관수 중단 ({actual_duration}초 경과)")
@@ -424,6 +452,33 @@ class AutoIrrigationController:
     # ──────────────────────────────────────
     # 로그 & 시뮬레이션
     # ──────────────────────────────────────
+    def _load_last_irrigated_times(self):
+        """CSV에서 구역별 마지막 관수 시간 복원 — S9"""
+        import csv as _csv
+        if not os.path.exists(self.CSV_PATH):
+            return
+        try:
+            with open(self.CSV_PATH, 'r', encoding='utf-8') as f:
+                reader = _csv.DictReader(f)
+                for row in reader:
+                    if str(row.get('success', '')).lower() != 'true':
+                        continue
+                    try:
+                        zid = int(row['zone_id'])
+                        ts  = datetime.strptime(row['timestamp'], '%Y-%m-%d %H:%M:%S')
+                        if zid not in self.last_irrigated_time or ts > self.last_irrigated_time[zid]:
+                            self.last_irrigated_time[zid] = ts
+                    except (ValueError, KeyError):
+                        continue
+            if self.last_irrigated_time:
+                print(f'✅ 구역별 마지막 관수 시간 복원: {len(self.last_irrigated_time)}개 구역')
+        except Exception as e:
+            print(f'⚠️  마지막 관수 시간 복원 실패: {e}')
+
+    def update_last_irrigated_time(self, zone_id):
+        """스케줄러 등 외부에서 관수 완료 후 호출 — S9"""
+        self.last_irrigated_time[zone_id] = datetime.now()
+
     def _init_irrigation_csv(self):
         import csv
         if not os.path.exists(self.CSV_PATH) or os.path.getsize(self.CSV_PATH) == 0:
