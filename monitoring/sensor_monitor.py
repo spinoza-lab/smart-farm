@@ -14,6 +14,7 @@ import threading
 from datetime import datetime
 from typing import Optional, Callable, Dict, List
 import logging
+_log = logging.getLogger(__name__)
 
 from pathlib import Path
 
@@ -54,6 +55,8 @@ class SensorMonitor:
         self.check_interval = self.config.get('check_interval', 60)
         self.sample_count = self.config.get('sample_count', 10)
         self.outlier_remove = self.config.get('outlier_remove', 2)
+        # BUG-14: 채널당 유효 샘플 최소 개수 (절반 이상이어야 평균 계산)
+        self.min_valid_samples = max(1, self.sample_count // 2)
         self.min_water_level = self.config.get('min_water_level', 20.0)
         self.max_water_level = self.config.get('max_water_level', 90.0)
         
@@ -187,37 +190,53 @@ class SensorMonitor:
         센서 데이터 수집 (다중 샘플링 + 이상치 제거)
         check_interval 동안 균등하게 샘플링
         """
-        # 다중 샘플링
+        # 다중 샘플링 (BUG-14: None 샘플 허용)
         voltage_samples = []
-        
+
         for i in range(self.sample_count):
             voltages = self.sensor_reader.read_all_channels()
-            voltage_samples.append(voltages)
-            
+            voltage_samples.append(voltages)  # None 포함 가능
+
             # 마지막 샘플 후에는 대기 안 함
             if i < self.sample_count - 1:
                 time.sleep(self.sample_interval)
-        
-        # 채널별로 이상치 제거 후 평균
+
+        # 채널별로 이상치 제거 후 평균 (BUG-14: None 필터링)
         filtered_voltages = []
-        
+        all_channels_failed = True
+
         for ch in range(4):
-            ch_values = [s[ch] for s in voltage_samples]
-            
+            # None 제외한 유효 샘플만 추출
+            ch_values = [s[ch] for s in voltage_samples
+                         if s is not None and s[ch] is not None]
+
+            if len(ch_values) < self.min_valid_samples:
+                _log.warning(
+                    f'[SensorMonitor] CH{ch} 유효 샘플 부족: '
+                    f'{len(ch_values)}/{self.sample_count} → None 처리'
+                )
+                filtered_voltages.append(None)
+                continue
+
+            all_channels_failed = False
+
             # 정렬
             ch_values.sort()
-            
+
             # 상하위 제거 (샘플이 충분할 때만)
             if len(ch_values) > self.outlier_remove * 2:
                 trimmed = ch_values[self.outlier_remove:-self.outlier_remove]
             else:
                 trimmed = ch_values
-            
+
             # 평균 계산 (소수점 3자리 반올림)
             avg = sum(trimmed) / len(trimmed)
             filtered_voltages.append(round(avg, 3))
-        
-        
+
+        # 전체 채널 실패 시 예외 → _monitor_loop 에서 10초 후 재시도
+        if all_channels_failed:
+            raise SensorReadError('모든 채널 유효 샘플 없음 — I2C 연결 확인 필요')
+
         # 타임스탬프
         timestamp = self.rtc.get_datetime_string('%Y-%m-%d %H:%M:%S')
         
@@ -232,19 +251,25 @@ class SensorMonitor:
         tank2_empty = self.tank2_empty
         tank2_full = self.tank2_full
         
-        # 탱크1 수위 계산
-        if tank1_voltage <= tank1_empty:
+        # 탱크1 수위 계산 (BUG-14: None 전압 → None 수위)
+        if tank1_voltage is None:
+            tank1_level = None
+        elif tank1_voltage <= tank1_empty:
             tank1_level = 0.0
         elif tank1_voltage >= tank1_full:
             tank1_level = 100.0
         else:
             tank1_level = round(((tank1_voltage - tank1_empty) / (tank1_full - tank1_empty)) * 100, 1)
-        
-        # 탱크2 수위 계산
-        if tank2_voltage <= tank2_empty:
+
+        # 탱크2 수위 계산 (BUG-14: None 전압 → None 수위)
+        if tank2_voltage is None:
+            tank2_level = None
+        elif tank2_voltage <= tank2_empty:
             tank2_level = 0.0
         elif tank2_voltage >= tank2_full:
             tank2_level = 100.0
+        else:
+            tank2_level = round(((tank2_voltage - tank2_empty) / (tank2_full - tank2_empty)) * 100, 1)
         else:
             tank2_level = round(((tank2_voltage - tank2_empty) / (tank2_full - tank2_empty)) * 100, 1)
         
