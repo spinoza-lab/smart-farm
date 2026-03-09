@@ -585,11 +585,13 @@ class TelegramNotifier:
                 typ  = s.get("type", "schedule")
                 if typ == "routine":
                     interval = s.get("interval_days", "?")
-                    lines.append(f"{en} ID{sid} | 구역{z} | {t} | {d}초 | {interval}일마다")
+                    zone_str = "전체" if z == 0 else str(z)
+                    lines.append(f"{en} ID{sid} | 구역{zone_str} | {t} | {d}초 | {interval}일마다")
                 else:
                     days    = s.get("days", [])
                     day_str = "".join(day_names[i] for i in days if 0 <= i <= 6) if days else "매일"
-                    lines.append(f"{en} ID{sid} | 구역{z} | {t} | {d}초 | {day_str}")
+                    zone_str = "전체" if z == 0 else str(z)
+                    lines.append(f"{en} ID{sid} | 구역{zone_str} | {t} | {d}초 | {day_str}")
 
             self.edit_message(chat_id, message_id,
                               "\n".join(lines), buttons=MAIN_MENU)

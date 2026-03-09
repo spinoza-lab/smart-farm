@@ -11,6 +11,10 @@ from adafruit_ads1x15.analog_in import AnalogIn
 import time
 import json
 import os
+import logging
+from collections import defaultdict
+
+_log = logging.getLogger(__name__)
 
 
 class SensorReader:
@@ -45,6 +49,17 @@ class SensorReader:
             3: AnalogIn(self.ads, ADS.P3),
         }
         
+        # I2C 재시도 설정
+        self.retry_count = 2        # 실패 시 재시도 횟수
+        self.retry_delay = 0.05     # 재시도 간격 (50ms)
+        self.use_fallback = True    # 마지막 정상값 fallback 사용 여부
+
+        # 오류 추적 (채널별)
+        self.last_valid_voltage = {}          # {ch: 마지막 정상 전압}
+        self.consecutive_errors = defaultdict(int)  # {ch: 연속 오류 횟수}
+        self.total_reads   = defaultdict(int) # {ch: 총 읽기 횟수}
+        self.error_reads   = defaultdict(int) # {ch: 오류 횟수}
+
         # 캘리브레이션 로드
         self.calibration = self._load_calibration()
         
@@ -94,19 +109,71 @@ class SensorReader:
     
     def read_voltage(self, channel):
         """
-        전압 읽기
-        
+        전압 읽기 (I2C 재시도 + fallback)
+
         Args:
             channel: 채널 번호 (0-3)
-            
+
         Returns:
-            float: 전압 (V)
+            float | None: 정상 시 전압값, 모두 실패 시 None (또는 마지막 정상값)
         """
         if channel not in self.channels:
             print(f"❌ 잘못된 채널: {channel}")
             return None
-        
-        return self.channels[channel].voltage
+
+        self.total_reads[channel] += 1
+
+        for attempt in range(self.retry_count + 1):   # 기본 총 3회 시도
+            try:
+                voltage = self.channels[channel].voltage
+
+                # ✅ 성공 → 연속 오류 리셋, 정상값 저장
+                if self.consecutive_errors[channel] > 0:
+                    _log.info(f"[SensorReader] CH{channel} 복구 "
+                              f"(이전 연속 오류: {self.consecutive_errors[channel]}회)")
+                self.consecutive_errors[channel] = 0
+                self.last_valid_voltage[channel]  = voltage
+                return voltage
+
+            except (OSError, IOError, TimeoutError) as e:
+                if attempt < self.retry_count:
+                    time.sleep(self.retry_delay)
+                    continue
+
+                # ❌ 재시도 모두 실패
+                self.consecutive_errors[channel] += 1
+                self.error_reads[channel]         += 1
+                _log.warning(
+                    f"[SensorReader] CH{channel} 읽기 실패 "
+                    f"(재시도 {self.retry_count}회) — "
+                    f"{type(e).__name__}: {e} | "
+                    f"연속 {self.consecutive_errors[channel]}회"
+                )
+
+                # fallback: 마지막 정상값 반환
+                if self.use_fallback and channel in self.last_valid_voltage:
+                    _log.info(
+                        f"[SensorReader] CH{channel} fallback → "
+                        f"{self.last_valid_voltage[channel]:.3f}V"
+                    )
+                    return self.last_valid_voltage[channel]
+
+                return None   # fallback도 없으면 None
+
+    def get_error_stats(self):
+        """채널별 오류 통계 반환 (AlertManager / API 용)"""
+        stats = {}
+        for ch in range(4):
+            total = self.total_reads[ch]
+            errors = self.error_reads[ch]
+            stats[f'ch{ch}'] = {
+                'total_reads':       total,
+                'error_reads':       errors,
+                'success_rate':      round((total - errors) / total * 100, 2) if total > 0 else 100.0,
+                'consecutive_errors': self.consecutive_errors[ch],
+                'last_valid_voltage': self.last_valid_voltage.get(ch),
+            }
+        return stats
     
     def read_raw(self, channel):
         """

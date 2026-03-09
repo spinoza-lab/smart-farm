@@ -122,6 +122,10 @@ class AlertManager:
         # 쿨다운 설정
         self.cooldown_seconds = cooldown_seconds
         self.last_alert_time = {}  # {alert_key: timestamp}
+        # BUG-14 P1: 센서 연속 오류 카운터 & 복구 플래그
+        from collections import defaultdict as _dd
+        self.sensor_error_counts = _dd(int)          # ch → 연속 오류 횟수
+        self.sensor_recovered    = _dd(lambda: True) # ch → 복구 상태 (초기=True)
         
         # 로그 파일
         self.log_file = log_file
@@ -328,31 +332,56 @@ class AlertManager:
         
         return None
     
-    def check_sensor_error(self, voltage: float, channel: int) -> Optional[Alert]:
+    def check_sensor_error(self, voltage, channel: int):
         """
-        센서 오류 체크
-        
-        Args:
-            voltage: 측정 전압
-            channel: 채널 번호
-        
-        Returns:
-            발생한 경고 (없으면 None)
+        센서 오류 체크 (BUG-14 P1)
+        - None 전압 허용 (I2C 읽기 실패)
+        - 연속 오류 1회 → WARNING, 5회↑ → CRITICAL 재알림
+        - 정상 복구 감지 → INFO 알림 + 쿨다운 초기화
         """
-        # 비정상 전압 범위 (0V 또는 3.3V 이상)
-        if voltage < 0.1 or voltage > 3.2:
-            alert_key = f"sensor_error_ch{channel}"
-            
-            if not self._is_cooldown_active(alert_key):
+        alert_key = f"sensor_error_ch{channel}"
+        is_error  = (voltage is None) or (voltage < 0.1 or voltage > 3.2)
+
+        if is_error:
+            self.sensor_error_counts[channel] += 1
+            self.sensor_recovered[channel]     = False
+            count    = self.sensor_error_counts[channel]
+            volt_str = f"{voltage:.3f}V" if voltage is not None else "None (읽기 실패)"
+
+            # 5회 이상 연속 → CRITICAL (별도 쿨다운)
+            if count >= 5 and not self._is_cooldown_active(alert_key + "_critical"):
+                self._update_cooldown(alert_key + "_critical")
+                return self._create_alert(
+                    alert_type=AlertType.SENSOR_ERROR,
+                    level=AlertLevel.CRITICAL,
+                    message=f"채널 {channel} 센서 연속 오류 {count}회 ({volt_str})",
+                    value=voltage
+                )
+            # 1회 → WARNING
+            elif count == 1 and not self._is_cooldown_active(alert_key):
                 self._update_cooldown(alert_key)
-                
                 return self._create_alert(
                     alert_type=AlertType.SENSOR_ERROR,
                     level=AlertLevel.WARNING,
-                    message=f"채널 {channel} 센서 오류 (비정상 전압: {voltage:.3f}V)",
+                    message=f"채널 {channel} 센서 오류 ({volt_str})",
                     value=voltage
                 )
-        
+
+        else:
+            # 정상 전압 → 카운터 리셋 + 복구 알림
+            prev = self.sensor_error_counts[channel]
+            self.sensor_error_counts[channel] = 0
+            if not self.sensor_recovered[channel] and prev > 0:
+                self.sensor_recovered[channel] = True
+                self.last_alert_time.pop(alert_key, None)
+                self.last_alert_time.pop(alert_key + "_critical", None)
+                return self._create_alert(
+                    alert_type=AlertType.SENSOR_ERROR,
+                    level=AlertLevel.INFO,
+                    message=f"채널 {channel} 센서 복구됨 (전압: {voltage:.3f}V)",
+                    value=voltage
+                )
+
         return None
     
     def report_communication_error(self, error_msg: str) -> Alert:
