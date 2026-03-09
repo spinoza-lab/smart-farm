@@ -26,13 +26,13 @@ def get_status():
                     'timestamp':   ts_str,
                     'tank1_level': round(last_data['tank1_level'], 1),
                     'tank2_level': round(last_data['tank2_level'], 1),
-                    'voltages':    [round(v, 3) for v in last_data['voltages']]
+                    'voltages':    [round(v, 3) if v is not None else None for v in last_data['voltages']]
                 })
             else:
                 status.update({
                     'tank1_level': round(g.cached_sensor_data.get('tank1_level', 0.0), 1),
                     'tank2_level': round(g.cached_sensor_data.get('tank2_level', 0.0), 1),
-                    'voltages':    [round(v, 3) for v in g.cached_sensor_data.get('voltages', [0.0]*4)]
+                    'voltages':    [round(v, 3) if v is not None else None for v in g.cached_sensor_data.get('voltages', [0.0]*4)]
                 })
                 if g.cached_sensor_data.get('timestamp'):
                     status['timestamp'] = g.cached_sensor_data['timestamp']
@@ -45,6 +45,30 @@ def get_status():
                 'critical_count_24h': as_['critical_count_24h'],
                 'warning_count_24h':  as_['warning_count_24h']
             })
+        # ── 센서 오류 정보 (BUG-14 P2) ────────────────────────────
+        sensor_errors = {}
+        sensor_stats = {}
+        try:
+            if hasattr(g, 'alert_manager') and g.alert_manager:
+                am = g.alert_manager
+                err_counts = getattr(am, 'sensor_error_counts', {})
+                for ch in range(4):
+                    key = f'ch{ch}'
+                    cnt = err_counts.get(key, 0)
+                    sensor_errors[key] = bool(cnt > 0)
+        except Exception:
+            pass
+        try:
+            if hasattr(g, 'sensor_monitor') and g.sensor_monitor:
+                sr = getattr(g.sensor_monitor, 'sensor_reader', None)
+                if sr and hasattr(sr, 'get_error_stats'):
+                    raw_stats = sr.get_error_stats()
+                    if raw_stats:
+                        sensor_stats = raw_stats
+        except Exception:
+            pass
+        status['sensor_errors'] = sensor_errors
+        status['sensor_stats'] = sensor_stats
         return jsonify(status)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
