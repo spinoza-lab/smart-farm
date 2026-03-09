@@ -183,6 +183,7 @@ def init_monitoring_system():
                         g.telegram_notifier.start_polling(controller=g.auto_irrigation)
                         g.telegram_notifier.notify_server_start()
                         print("✅ 텔레그램 알림 초기화 완료")
+                        import sys as _s; _s.modules[__name__].telegram_notifier = g.telegram_notifier  # auto_controller 호환 alias
                 except Exception as e: print(f"⚠️ 텔레그램 초기화 실패: {e}")
             except Exception as e: print(f"⚠️  IrrigationScheduler 초기화 실패: {e}"); g.irrigation_scheduler = None
         except Exception as e:
