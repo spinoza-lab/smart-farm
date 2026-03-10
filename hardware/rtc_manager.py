@@ -11,7 +11,6 @@ adafruit_ds1307 직접 접근 제거 → datetime.now() 사용
 import time
 import datetime
 
-
 class RTCManager:
     """RTC DS1307 실시간 시계 관리 (시스템 시간 기반)"""
 
@@ -67,27 +66,6 @@ class RTCManager:
             str: 날짜 문자열
         """
         return self.get_datetime_string("%Y-%m-%d")
-
-    def set_datetime(self, dt=None):
-        """
-        시간 설정 (시스템 시간 모드에서는 무시)
-        커널이 부팅 시 RTC에서 자동으로 시스템 시간을 설정함
-        [BUG-3] 이 메서드는 no-op입니다. 커널 드라이버가 RTC 동기화를 담당합니다.
-        호출부에서 제거하거나 무시해도 무방합니다.
-        """
-        import logging as _logging
-        _logging.getLogger(__name__).warning(
-            "set_datetime() called but is a no-op: kernel driver handles RTC sync automatically"
-        )
-        print("ℹ️  [BUG-3] set_datetime() 무시 — 커널이 RTC 자동 동기화 담당")
-
-    def sync_from_system(self):
-        """시스템 시간 모드에서는 불필요 (커널이 자동 처리)"""
-        print(f"✓ 시스템 시간 사용 중: {self.get_datetime_string()}")
-
-    def sync_to_system(self):
-        """시스템 시간 모드에서는 불필요"""
-        print("ℹ️  시스템 시간 모드: sync_to_system() 불필요")
 
     def get_timestamp(self):
         """
@@ -148,93 +126,3 @@ class RTCManager:
 
         return names[weekday]
 
-    def wait_until(self, target_time):
-        """
-        지정된 시간까지 대기
-
-        Args:
-            target_time: 목표 시간 (HH:MM 형식)
-
-        [BUG-4] ⚠️ 메인 스레드에서 호출 금지 — Flask 서버가 정지됩니다.
-        반드시 별도 스레드(예: scheduler 스레드)에서만 호출하세요.
-        현재 프로젝트 내 실제 호출부 없음(2026-03-05 확인).
-        """
-        import threading as _threading
-        if _threading.current_thread() is _threading.main_thread():
-            import logging as _logging
-            _logging.getLogger(__name__).error(
-                "wait_until() called from MAIN THREAD — this will block Flask! Aborting."
-            )
-            print("❌ [BUG-4] wait_until()을 메인 스레드에서 호출했습니다. 차단 방지를 위해 중단합니다.")
-            return
-
-        print(f"⏰ {target_time}까지 대기 중...")
-
-        while True:
-            current = self.get_time_string()[:5]
-            if current >= target_time:
-                break
-            time.sleep(10)  # 10초마다 확인
-
-        print(f"✓ {target_time} 도달")
-
-    def display_clock(self, duration=10):
-        """
-        실시간 시계 표시
-
-        Args:
-            duration: 표시 시간 (초)
-        """
-        print("\n" + "="*50)
-        print("🕐 실시간 시계")
-        print("="*50)
-
-        start = time.time()
-
-        try:
-            while time.time() - start < duration:
-                current = self.get_datetime_string()
-                weekday = self.get_weekday_name()
-
-                print(f"\r⏰ {current} ({weekday})", end='', flush=True)
-                time.sleep(1)
-
-        except KeyboardInterrupt:
-            pass
-
-        print("\n" + "="*50)
-
-
-# 테스트 코드
-if __name__ == "__main__":
-    print("="*50)
-    print("🧪 RTCManager 테스트")
-    print("="*50)
-
-    try:
-        rtc = RTCManager()
-
-        print("\n[테스트 1] 현재 시간")
-        print(f"   전체: {rtc.get_datetime_string()}")
-        print(f"   날짜: {rtc.get_date_string()}")
-        print(f"   시간: {rtc.get_time_string()}")
-        print(f"   요일: {rtc.get_weekday_name()}")
-
-        print("\n[테스트 2] 타임스탬프")
-        print(f"   {rtc.get_timestamp()}")
-
-        print("\n[테스트 3] 시간 범위 확인")
-        in_range = rtc.is_time_in_range("06:00", "18:00")
-        print(f"   06:00-18:00 범위: {'✅ 범위 내' if in_range else '❌ 범위 외'}")
-
-        print("\n[테스트 4] 실시간 시계 표시 (5초)")
-        rtc.display_clock(duration=5)
-
-        print("\n" + "="*50)
-        print("✅ 모든 테스트 완료!")
-        print("="*50)
-
-    except Exception as e:
-        print(f"\n❌ 테스트 실패: {e}")
-        import traceback
-        traceback.print_exc()
