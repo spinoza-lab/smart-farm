@@ -1,14 +1,14 @@
 # 📋 Smart Farm 프로젝트 현황 노트
 
 > 최종 업데이트: 2026-03-09
-> 버전: v4.1 (Blueprint 리팩터링 + BUG-14 P0/P1/P2 완료)
+> 버전: v0.4.1 (Blueprint 리팩터링 + BUG-14 P0/P1/P2 완료)
 > 작업 세션 간 컨텍스트 유지를 위한 내부 노트
 
 ---
 
 ## ✅ 전체 완료 작업 목록
 
-### v4.1 신규 완료 (2026-03-09)
+### v0.4.1 신규 완료 (2026-03-09)
 | ID | 내용 | 파일 | 커밋 |
 |---|---|---|---|
 | Refactor | Blueprint 분리 (app.py 3000줄 → 5개 bp) | web/blueprints/*.py, web/globals.py | 592fa92 |
@@ -43,10 +43,10 @@ I2C 읽기 실패
 
 ---
 
-### v3.5 ~ v3.8 완료 (상세는 CHANGELOG.md 참조)
+### v0.3.5 ~ v0.3.8 완료 (상세는 CHANGELOG.md 참조)
 - Bug-N1 ~ Bug-A1, BUG-1 ~ BUG-16 전체 완료
 
-### v4.0 완료 (2026-03-09)
+### v0.4.0 완료 (2026-03-09)
 - Stage 9: 관수 주기 관리 시스템 (`32d76d5`)
 - BUG-17 WONTFIX: Stage 9로 근본 해결
 
@@ -66,11 +66,11 @@ I2C 읽기 실패
 
 ---
 
-## 🔖 커밋 이력 (최신순, v4.1 기준)
+## 🔖 커밋 이력 (최신순, v0.4.1 기준)
 | 해시 | 내용 |
 |------|------|
 | `592a6ba` | feat(api): /api/status sensor_errors·sensor_stats 추가 (BUG-14 P2) |
-| `e88f333` | docs: v4.1 문서 업데이트 |
+| `e88f333` | docs: v0.4.1 문서 업데이트 |
 | `bd831c1` | fix(alert): None 전압 허용 + 연속 오류 카운터 + 복구 감지 (BUG-14 P1) |
 | `81c7e71` | fix(sensor): 패치③ 잔재 else 제거 (SyntaxError 수정) |
 | `501df2a` | fix(sensor): None 샘플 필터링 + SensorReadError + 수위 None 처리 (BUG-14 P0-2) |

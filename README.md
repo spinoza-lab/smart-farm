@@ -2,7 +2,7 @@
 
 > **Repository**: [spinoza-lab/smart-farm](https://github.com/spinoza-lab/smart-farm)
 > **최종 업데이트**: 2026-03-09
-> **버전**: v4.1
+> **버전**: v0.4.1
 
 라즈베리파이 기반 자동 관수 및 수위 모니터링 시스템
 
@@ -27,9 +27,9 @@
 - 🐕 **Watchdog 스레드** — periodic_data_sender 자동 재시작, 30초 내 복구
 - 🗂️ **동적 경로 처리** — _BASE_DIR 기반으로 어디서든 실행 가능
 - ⚡ **JS/CSS 캐시 버스팅** — 서버 시작 타임스탬프 자동 적용
-- 🏗️ **Blueprint 아키텍처** — Flask Blueprint 5개 분리, slim entry point (v4.1)
-- 🔁 **관수 주기 관리** — 구역별 최소/최대 관수 간격, 재시작 후 CSV 복원 (v4.0)
-- 🔋 **I2C 장애 내성** — 재시도 2회 + fallback + 연속 오류 단계별 알림 (v4.1)
+- 🏗️ **Blueprint 아키텍처** — Flask Blueprint 5개 분리, slim entry point (v0.4.1)
+- 🔁 **관수 주기 관리** — 구역별 최소/최대 관수 간격, 재시작 후 CSV 복원 (v0.4.0)
+- 🔋 **I2C 장애 내성** — 재시도 2회 + fallback + 연속 오류 단계별 알림 (v0.4.1)
 
 ---
 
@@ -41,7 +41,7 @@
 | [🌱 시스템 기능](docs/FEATURES.md) | 관수 제어, 센서 모니터링, 웹 인터페이스 상세 |
 | [🤖 텔레그램 봇](docs/TELEGRAM.md) | 자동 알림, 인라인 메뉴, 설정 안정성 |
 | [🔌 API 레퍼런스](docs/API.md) | 전체 API 엔드포인트 목록 |
-| [📝 변경 이력](docs/CHANGELOG.md) | 버전별 업데이트 내용 (v2.0~v4.1) |
+| [📝 변경 이력](docs/CHANGELOG.md) | 버전별 업데이트 내용 (v0.2.0~v0.4.1) |
 | [🔧 트러블슈팅](docs/TROUBLESHOOTING.md) | 자주 발생하는 오류 및 해결법 |
 | [📋 프로젝트 현황](docs/STATUS.md) | 버그 현황, 커밋 이력, 작업 노트 |
 
@@ -51,24 +51,24 @@
 ```
 smart_farm/
 ├── hardware/
-│   ├── sensor_reader.py           # ADS1115 (재시도+fallback, v4.1)
+│   ├── sensor_reader.py           # ADS1115 (재시도+fallback, v0.4.1)
 │   ├── relay_controller.py
 │   ├── modbus_soil_sensor.py
 │   └── rtc_manager.py
 ├── irrigation/
 │   ├── auto_controller.py
-│   ├── scheduler.py               # 전체구역(zone_id=0) 지원 (v4.1)
+│   ├── scheduler.py               # 전체구역(zone_id=0) 지원 (v0.4.1)
 │   ├── config_manager.py
 │   └── zone_manager.py
 ├── monitoring/
-│   ├── sensor_monitor.py          # None 필터링 + SensorReadError (v4.1)
+│   ├── sensor_monitor.py          # None 필터링 + SensorReadError (v0.4.1)
 │   ├── data_logger.py
-│   ├── alert_manager.py           # 연속 오류 카운터 + 복구 감지 (v4.1)
+│   ├── alert_manager.py           # 연속 오류 카운터 + 복구 감지 (v0.4.1)
 │   └── telegram_notifier.py
 ├── web/
-│   ├── app.py                     # slim entry point (v4.1)
-│   ├── globals.py                 # 공유 전역 변수 (v4.1 신규)
-│   ├── blueprints/                # (v4.1 신규)
+│   ├── app.py                     # slim entry point (v0.4.1)
+│   ├── globals.py                 # 공유 전역 변수 (v0.4.1 신규)
+│   ├── blueprints/                # (v0.4.1 신규)
 │   │   ├── monitoring_bp.py
 │   │   ├── irrigation_bp.py
 │   │   ├── analytics_bp.py
@@ -90,14 +90,14 @@ smart_farm/
 |------|------|
 | 탱크 수위 샘플링 주기 | 10초 |
 | 샘플 개수 | 10회/주기 (Trimmed Mean ±2 제거) |
-| 유효 샘플 최소치 | 5회 (v4.1) |
-| I2C 재시도 횟수 | 2회 / 50ms (v4.1) |
+| 유효 샘플 최소치 | 5회 (v0.4.1) |
+| I2C 재시도 횟수 | 2회 / 50ms (v0.4.1) |
 | 자동 관수 점검 주기 | 설정 가능 (기본 5분) |
 | 스케줄 체크 주기 | 10초 |
 | Watchdog 체크 주기 | 30초 |
-| 관수 구역 수 | 12구역 + 전체구역 일괄 지원 (v4.1) |
+| 관수 구역 수 | 12구역 + 전체구역 일괄 지원 (v0.4.1) |
 | 토양 센서 수 | 12개 (RS-485 Modbus RTU) |
-| 센서 오류 연속 CRITICAL 임계 | 5회 (v4.1) |
+| 센서 오류 연속 CRITICAL 임계 | 5회 (v0.4.1) |
 | 대시보드 업데이트 주기 | 10초 (SocketIO) |
 | 텔레그램 폴링 주기 | 3초 |
 
@@ -117,9 +117,9 @@ journalctl -u smart-farm.service -f
 
 ### ✅ 완료된 Stage
 - [x] Stage 1~8.6 — 하드웨어 초기화 ~ 시스템 안정화
-- [x] **Stage 8.7** — 텔레그램 /restart·/status, 웹 UI 서버 재시작 버튼 (v3.7)
-- [x] **Stage 9** — 관수 주기 관리 시스템 (v4.0)
-- [x] **Stage 9.1** — Blueprint 리팩터링 + I2C 장애 내성 (v4.1)
+- [x] **Stage 8.7** — 텔레그램 /restart·/status, 웹 UI 서버 재시작 버튼 (v0.3.7)
+- [x] **Stage 9** — 관수 주기 관리 시스템 (v0.4.0)
+- [x] **Stage 9.1** — Blueprint 리팩터링 + I2C 장애 내성 (v0.4.1)
 
 ### ⏳ 예정된 Stage
 - [ ] **BUG-14 P2** — /api/status 센서 오류 필드 + 웹 UI 표시
@@ -133,7 +133,7 @@ journalctl -u smart-farm.service -f
 | **MCU** | Raspberry Pi 4 |
 | **OS** | Raspberry Pi OS (Bookworm) |
 | **언어** | Python 3.11 |
-| **웹 프레임워크** | Flask 3.x + Flask-SocketIO + Blueprint (v4.1) |
+| **웹 프레임워크** | Flask 3.x + Flask-SocketIO + Blueprint (v0.4.1) |
 | **프론트엔드** | Vanilla JS + Chart.js |
 | **통신** | I2C (400 kHz), RS-485 Modbus RTU |
 | **알림** | Telegram Bot API |

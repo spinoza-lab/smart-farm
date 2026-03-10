@@ -1,6 +1,6 @@
 """
 Flask 웹 대시보드 메인 애플리케이션 (Blueprint 리팩터링)
-버전: v4.1 (refactor/blueprint)
+버전: v0.4.1 (refactor/blueprint)
 """
 import os, sys, signal, threading, time, json, atexit
 from pathlib import Path
@@ -219,7 +219,7 @@ def _graceful_shutdown(signum, frame):
 
 if __name__ == '__main__':
     print("="*60)
-    print("🌐 스마트 관수 시스템 v4.1 (Blueprint)")
+    print("🌐 스마트 관수 시스템 v0.4.1 (Blueprint)")
     print("="*60)
     if init_monitoring_system():
         signal.signal(signal.SIGTERM, _graceful_shutdown)
