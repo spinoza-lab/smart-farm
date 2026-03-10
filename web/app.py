@@ -139,10 +139,6 @@ def _watchdog_loop():
 
 def init_monitoring_system():
     try:
-        g.sensor_monitor = SensorMonitor(config={
-            'check_interval': 10, 'sample_count': 10,
-            'outlier_remove': 2, 'min_water_level': 20.0, 'max_water_level': 90.0
-        })
         g.data_logger = DataLogger(log_dir=str(_BASE_DIR / 'logs'))
         try:
             with open(str(_BASE_DIR / 'config/notifications.json')) as f:
@@ -151,8 +147,15 @@ def init_monitoring_system():
             _t1_min = float(_thr.get('tank1_min', 20.0)); _t1_max = float(_thr.get('tank1_max', 90.0))
             _t2_min = float(_thr.get('tank2_min', 20.0)); _t2_max = float(_thr.get('tank2_max', 90.0))
             _cooldown = int(_nc.get('cooldown_seconds', 300))
+            _cooldown_sm = int(_nc.get('sensor_monitor_cooldown', 300))  # BUG-18: SM 쿨다운
         except Exception as e:
-            print(f'[Init] thresholds 로드 실패: {e}'); _t1_min=_t2_min=20.0; _t1_max=_t2_max=90.0; _cooldown=300
+            print(f'[Init] thresholds 로드 실패: {e}')
+            _t1_min=_t2_min=20.0; _t1_max=_t2_max=90.0; _cooldown=300; _cooldown_sm=300
+        g.sensor_monitor = SensorMonitor(config={
+            'check_interval': 10, 'sample_count': 10,
+            'outlier_remove': 2, 'min_water_level': 20.0, 'max_water_level': 90.0,
+            'alert_cooldown': _cooldown_sm  # BUG-18: notifications.json에서 읽기
+        })
         g.alert_manager = AlertManager(tank1_min=_t1_min, tank1_max=_t1_max, tank2_min=_t2_min, tank2_max=_t2_max,
                                         cooldown_seconds=_cooldown, log_file=str(_BASE_DIR/'logs/alerts.log'))
         def alert_callback(alert):
