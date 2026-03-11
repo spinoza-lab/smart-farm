@@ -114,7 +114,6 @@
 - [BUG-15] _monitor_loop 체크 주기 수정 - 관수 소요시간 제외 후 잔여시간만 대기
 - [BUG-16] 다중 구역 연속 관수 중 구역마다 탱크 수위 재체크 추가
 
-
 ### 🐛 BUG-14 P2: /api/status 센서 오류 정보 추가 (커밋 `592a6ba`)
 
 **파일**: `web/blueprints/monitoring_bp.py`
@@ -173,3 +172,43 @@
 | P0-2 | `501df2a` | `monitoring/sensor_monitor.py` | None 샘플 필터링 + SensorReadError |
 | P0-2 수정 | `81c7e71` | `monitoring/sensor_monitor.py` | SyntaxError 잔재 else 제거 |
 | P1 | `bd831c1` | `monitoring/alert_manager.py` | None 전압 허용 + 연속 카운터 + 복구 감지 |
+
+---
+
+## 🔮 v0.5.0 (예정) — Stage 10: 대기환경 모니터링
+
+> 하드웨어 주문 완료 (2026-03-11). 배송 후 구현 예정.
+
+### 추가 하드웨어
+- **CDSENET EID041-G01 (SHT30)** × 12 — 구역별 대기 온도·습도 (RS-485 Modbus, 9600bps)
+- **MISOL WH65LP** × 1 — 외부 기상 스테이션 (RS-485, 독자 25바이트 프로토콜, 9600bps)
+- **MAX485 모듈** × 2 추가 (Bus 2/3)
+
+### RS-485 버스 배선 계획
+| 버스 | UART | 경로 | TX | RX | DE/RE | 용도 |
+|------|------|------|----|----|-------|------|
+| Bus 1 | UART0 | /dev/ttyAMA0 | GPIO14 | GPIO15 | GPIO18 | 토양 센서 ×12 (기존) |
+| Bus 2 | UART3 | /dev/ttyAMA2 | GPIO4 (Pin7) | GPIO5 (Pin29) | GPIO17 (Pin11) | 대기 온습도 ×12 (신규) |
+| Bus 3 | UART4 | /dev/ttyAMA3 | GPIO8 (Pin24) | GPIO9 (Pin21) | GND (Pin25) | 기상 스테이션 ×1 (신규) |
+
+### 추가 소프트웨어 파일 목록
+```
+config/air_sensors.json          # SHT30 설정 (포트/baudrate/센서목록)
+config/weather_station.json      # WH65LP 설정 (포트/baudrate)
+hardware/air_sensor_reader.py    # SHT30 Modbus RTU 드라이버
+hardware/weather_station_reader.py  # WH65LP 패킷 파서
+monitoring/environment_monitor.py   # 백그라운드 폴링 스레드
+web/blueprints/environment_bp.py    # REST API (/api/environment/*)
+web/globals.py                   # 전역 변수 추가 (수정)
+web/app.py                       # Blueprint 등록 (수정)
+web/templates/index.html         # 대시보드 환경 섹션 추가 (수정)
+```
+
+### 계획된 API 엔드포인트
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/api/environment` | 전체 환경 데이터 (공기 + 기상) |
+| GET | `/api/environment/air` | 전체 SHT30 센서 데이터 |
+| GET | `/api/environment/air/<id>` | 특정 구역 SHT30 데이터 |
+| GET | `/api/environment/weather` | WH65LP 기상 데이터 |
+| POST | `/api/environment/air/<id>/enable` | 센서 활성화/비활성화 |
