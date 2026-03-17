@@ -167,7 +167,7 @@ def init_monitoring_system():
             'alert_cooldown': _cooldown_sm  # BUG-18: notifications.json에서 읽기
         })
         g.alert_manager = AlertManager(tank1_min=_t1_min, tank1_max=_t1_max, tank2_min=_t2_min, tank2_max=_t2_max,
-                                        cooldown_seconds=_cooldown, log_file=str(_BASE_DIR/'logs/alerts.log'))
+                                        cooldown_seconds=_cooldown, log_file=str(_BASE_DIR/'logs/alerts.log'), db_manager=g.db_manager)
         def alert_callback(alert):
             socketio.emit('new_alert', {'timestamp':alert.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
                 'level':alert.level.value,'type':alert.alert_type.value,'message':alert.message,
