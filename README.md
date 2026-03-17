@@ -1,8 +1,8 @@
 # 🌱 스마트 관수 시스템 (Smart Irrigation System)
 
 > **Repository**: [spinoza-lab/smart-farm](https://github.com/spinoza-lab/smart-farm)
-> **최종 업데이트**: 2026-03-09
-> **버전**: v0.4.1
+> **최종 업데이트**: 2026-03-17
+> **버전**: v0.6.0
 
 라즈베리파이 기반 자동 관수 및 수위 모니터링 시스템
 
@@ -14,7 +14,7 @@
 - ⚙️ **정밀 캘리브레이션** — 소수점 3자리 정밀도 (0.001V 단위), 3중 검증
 - 📊 **실시간 대시보드** — WebSocket 기반 10초 자동 갱신
 - 🚨 **알림 시스템** — 수위/센서 이상 자동 경고, 쿨다운 웹 UI 설정 가능
-- 📈 **데이터 로깅** — CSV 형식 자동 저장 (탱크 수위 + 관수 이력)
+- 📈 **데이터 로깅** — SQLite DB 저장 (탱크 수위 + 관수 이력 + 환경 데이터) + CSV 병행 저장
 - 🌱 **12구역 자동 관수** — 토양 수분 센서 기반 수동/자동 모드
 - 🗓 **루틴 스케줄러** — 요일 기반(schedule) + N일 주기(routine) + 전체구역 일괄 실행
 - 🔒 **인터록 처리** — 동시 관수 방지, ±10분 grace window, 최대 1시간 대기
@@ -27,9 +27,11 @@
 - 🐕 **Watchdog 스레드** — periodic_data_sender 자동 재시작, 30초 내 복구
 - 🗂️ **동적 경로 처리** — _BASE_DIR 기반으로 어디서든 실행 가능
 - ⚡ **JS/CSS 캐시 버스팅** — 서버 시작 타임스탬프 자동 적용
-- 🏗️ **Blueprint 아키텍처** — Flask Blueprint 5개 분리, slim entry point (v0.4.1)
-- 🔁 **관수 주기 관리** — 구역별 최소/최대 관수 간격, 재시작 후 CSV 복원 (v0.4.0)
-- 🔋 **I2C 장애 내성** — 재시도 2회 + fallback + 연속 오류 단계별 알림 (v0.4.1)
+- 🏗️ **Blueprint 아키텍처** — Flask Blueprint 6개 분리, slim entry point
+- 🔁 **관수 주기 관리** — 구역별 최소/최대 관수 간격, 재시작 후 CSV 복원
+- 🔋 **I2C 장애 내성** — 재시도 2회 + fallback + 연속 오류 단계별 알림
+- 🌡️ **대기 환경 모니터링** — SHT30 ×12 구역별 온·습도 + WH65LP 기상 관측소 (v0.5.0)
+- 🗄️ **SQLite 데이터베이스** — CSV → SQLite 마이그레이션, 인덱스 기반 고속 조회 (v0.6.0)
 
 ---
 
@@ -41,7 +43,7 @@
 | [🌱 시스템 기능](docs/FEATURES.md) | 관수 제어, 센서 모니터링, 웹 인터페이스 상세 |
 | [🤖 텔레그램 봇](docs/TELEGRAM.md) | 자동 알림, 인라인 메뉴, 설정 안정성 |
 | [🔌 API 레퍼런스](docs/API.md) | 전체 API 엔드포인트 목록 |
-| [📝 변경 이력](docs/CHANGELOG.md) | 버전별 업데이트 내용 (v0.2.0~v0.4.1) |
+| [📝 변경 이력](docs/CHANGELOG.md) | 버전별 업데이트 내용 |
 | [🔧 트러블슈팅](docs/TROUBLESHOOTING.md) | 자주 발생하는 오류 및 해결법 |
 | [📋 프로젝트 현황](docs/STATUS.md) | 버그 현황, 커밋 이력, 작업 노트 |
 
@@ -51,32 +53,44 @@
 ```
 smart_farm/
 ├── hardware/
-│   ├── sensor_reader.py           # ADS1115 (재시도+fallback, v0.4.1)
+│   ├── sensor_reader.py           # ADS1115 (재시도+fallback)
 │   ├── relay_controller.py
 │   ├── modbus_soil_sensor.py
-│   └── rtc_manager.py
+│   ├── rtc_manager.py
+│   ├── air_sensor_reader.py       # SHT30 ×12 Modbus RTU (v0.5.0)
+│   └── weather_station_reader.py  # WH65LP 25바이트 파서 (v0.5.0)
 ├── irrigation/
 │   ├── auto_controller.py
-│   ├── scheduler.py               # 전체구역(zone_id=0) 지원 (v0.4.1)
+│   ├── scheduler.py
 │   ├── config_manager.py
 │   └── zone_manager.py
 ├── monitoring/
-│   ├── sensor_monitor.py          # None 필터링 + SensorReadError (v0.4.1)
-│   ├── data_logger.py
-│   ├── alert_manager.py           # 연속 오류 카운터 + 복구 감지 (v0.4.1)
-│   └── telegram_notifier.py
+│   ├── sensor_monitor.py
+│   ├── data_logger.py             # SQLite + CSV 병행 저장 (v0.6.0)
+│   ├── alert_manager.py
+│   ├── telegram_notifier.py
+│   └── environment_monitor.py     # 환경 모니터링 스레드 (v0.5.0, SQLite 지원 v0.6.0)
+├── database/                      # (v0.6.0 신규)
+│   ├── __init__.py
+│   ├── db_manager.py              # SQLite CRUD 매니저 (5개 테이블)
+│   └── migrate_csv_to_db.py       # 기존 CSV → SQLite 마이그레이션
 ├── web/
-│   ├── app.py                     # slim entry point (v0.4.1)
-│   ├── globals.py                 # 공유 전역 변수 (v0.4.1 신규)
-│   ├── blueprints/                # (v0.4.1 신규)
+│   ├── app.py
+│   ├── globals.py
+│   ├── blueprints/
 │   │   ├── monitoring_bp.py
 │   │   ├── irrigation_bp.py
-│   │   ├── analytics_bp.py
+│   │   ├── analytics_bp.py        # SQLite 쿼리 우선 (v0.6.0)
 │   │   ├── notifications_bp.py
-│   │   └── download_bp.py
+│   │   ├── download_bp.py
+│   │   └── environment_bp.py      # 환경 API (v0.5.0)
 │   ├── templates/
 │   └── static/
 ├── config/
+├── data/
+│   ├── smart_farm.db              # SQLite DB (v0.6.0)
+│   ├── air_sensor_logs/           # SHT30 CSV 백업
+│   └── weather_logs/              # WH65LP CSV 백업
 ├── docs/
 ├── logs/
 ├── scripts/
@@ -90,16 +104,18 @@ smart_farm/
 |------|------|
 | 탱크 수위 샘플링 주기 | 10초 |
 | 샘플 개수 | 10회/주기 (Trimmed Mean ±2 제거) |
-| 유효 샘플 최소치 | 5회 (v0.4.1) |
-| I2C 재시도 횟수 | 2회 / 50ms (v0.4.1) |
+| 유효 샘플 최소치 | 5회 |
+| I2C 재시도 횟수 | 2회 / 50ms |
 | 자동 관수 점검 주기 | 설정 가능 (기본 5분) |
 | 스케줄 체크 주기 | 10초 |
 | Watchdog 체크 주기 | 30초 |
-| 관수 구역 수 | 12구역 + 전체구역 일괄 지원 (v0.4.1) |
+| 관수 구역 수 | 12구역 + 전체구역 일괄 지원 |
 | 토양 센서 수 | 12개 (RS-485 Modbus RTU) |
-| 센서 오류 연속 CRITICAL 임계 | 5회 (v0.4.1) |
 | 대시보드 업데이트 주기 | 10초 (SocketIO) |
 | 텔레그램 폴링 주기 | 3초 |
+| SHT30 폴링 주기 | 60초 |
+| WH65LP 수신 주기 | 16초 (자동 송출) |
+| SQLite DB 크기 | ~11MB (99,162행 기준) |
 
 ---
 
@@ -120,10 +136,14 @@ journalctl -u smart-farm.service -f
 - [x] **Stage 8.7** — 텔레그램 /restart·/status, 웹 UI 서버 재시작 버튼 (v0.3.7)
 - [x] **Stage 9** — 관수 주기 관리 시스템 (v0.4.0)
 - [x] **Stage 9.1** — Blueprint 리팩터링 + I2C 장애 내성 (v0.4.1)
+- [x] **Stage 10** — 대기 환경 모니터링 SHT30×12 + WH65LP (v0.5.0)
+- [x] **Stage 11** — SQLite 마이그레이션 (v0.6.0)
 
-### ⏳ 예정된 Stage
-- [ ] **BUG-14 P2** — /api/status 센서 오류 필드 + 웹 UI 표시
-- [ ] **Stage 10** — SQLite 마이그레이션 + PWA
+### ⏳ 예정된 작업
+- [ ] **버전 관리 개선** — `config/version.json` 도입, 버전 표기 전체 일원화
+- [ ] **분석 페이지 기간 조회 버그 수정** — SQLite 연동 후 date range 필터 오동작
+- [ ] **환경 데이터 시계열 차트** — 분석 페이지에 Air/Weather 기간별 그래프 추가
+- [ ] **Stage 10 하드웨어 연결** — SHT30·WH65LP 수령 후 simulation_mode=false 전환
 
 ---
 
@@ -133,11 +153,11 @@ journalctl -u smart-farm.service -f
 | **MCU** | Raspberry Pi 4 |
 | **OS** | Raspberry Pi OS (Bookworm) |
 | **언어** | Python 3.11 |
-| **웹 프레임워크** | Flask 3.x + Flask-SocketIO + Blueprint (v0.4.1) |
+| **웹 프레임워크** | Flask 3.x + Flask-SocketIO + Blueprint |
 | **프론트엔드** | Vanilla JS + Chart.js |
 | **통신** | I2C (400 kHz), RS-485 Modbus RTU |
 | **알림** | Telegram Bot API |
-| **저장** | CSV (→ SQLite 예정) |
+| **저장** | SQLite (주) + CSV (백업) |
 | **서비스** | systemd |
 
 ---

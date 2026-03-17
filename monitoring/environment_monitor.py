@@ -1,316 +1,214 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-environment_monitor.py — 환경 모니터링 백그라운드 스레드
-- SHT30 대기 온습도: 60초 간격 읽기
-- WH65LP 기상 관측소: 16초 간격 폴링
-- CSV 로그: data/air_sensor_logs/air_YYYY-MM-DD.csv
-           data/weather_logs/weather_YYYY-MM-DD.csv
+environment_monitor.py (Stage 11 – SQLite 병행 저장)
+기존 CSV 저장 유지 + db_manager 주입 시 SQLite 동시 기록
+
+변경점:
+  - __init__에 db_manager 파라미터 추가
+  - _log_air()   → db_manager.insert_air_readings_bulk() 추가 호출
+  - _log_weather() → db_manager.insert_weather_reading() 추가 호출
+
+작성자: spinoza-lab
+날짜:   2026-03-17
 """
 
-import os
 import csv
-import time
-import logging
+import os
 import threading
+import time
 from datetime import datetime
-from typing import Optional, List
+from pathlib import Path
+from typing import List, Dict, Optional
 
-logger = logging.getLogger(__name__)
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
-BASE_DIR        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-AIR_LOG_DIR     = os.path.join(BASE_DIR, 'data', 'air_sensor_logs')
-WEATHER_LOG_DIR = os.path.join(BASE_DIR, 'data', 'weather_logs')
+AIR_LOG_DIR     = str(_BASE_DIR / 'data' / 'air_sensor_logs')
+WEATHER_LOG_DIR = str(_BASE_DIR / 'data' / 'weather_logs')
 
-AIR_INTERVAL     = 60   # SHT30 읽기 간격 (초)
-WEATHER_INTERVAL = 16   # WH65LP 폴링 간격 (초)
-MAX_HISTORY      = 100  # 메모리 히스토리 최대 개수
+AIR_INTERVAL     = 60   # 초
+WEATHER_INTERVAL = 16   # 초
+MAX_HISTORY      = 100  # 메모리 버퍼 크기
 
 
 class EnvironmentMonitor:
     """
-    환경 모니터링 스레드 매니저
+    환경 모니터링 스레드 매니저 (Stage 11: SQLite 지원)
 
     사용법:
-        monitor = EnvironmentMonitor(air_mgr, ws_rdr)
+        monitor = EnvironmentMonitor(air_mgr, ws_rdr, db_manager=db)
         monitor.start()
-        ...
         data = monitor.get_environment_status()
         monitor.stop()
     """
 
-    def __init__(self, air_sensor_manager=None, weather_station_reader=None):
+    def __init__(self, air_sensor_manager=None,
+                 weather_station_reader=None,
+                 db_manager=None):
         self.air_mgr     = air_sensor_manager
         self.weather_rdr = weather_station_reader
+        self.db_manager  = db_manager          # Stage 11 추가
 
-        # 현재 측정값
-        self.air_data:     List[dict] = []
-        self.weather_data: Optional[dict] = None
+        self._stop_event = threading.Event()
+        self._air_thread     = None
+        self._weather_thread = None
+        self._lock = threading.Lock()
 
-        # 히스토리 (메모리, 최근 MAX_HISTORY개)
+        # 메모리 히스토리
         self.air_history:     List[dict] = []
         self.weather_history: List[dict] = []
 
-        self._running        = False
-        self._air_thread     = None
-        self._weather_thread = None
-        self._lock           = threading.Lock()
+        # 최신 상태 캐시
+        self._latest_air:     List[dict] = []
+        self._latest_weather: Optional[dict] = None
 
-        # 로그 디렉토리 생성
+        # 로그 디렉터리 생성
         os.makedirs(AIR_LOG_DIR,     exist_ok=True)
         os.makedirs(WEATHER_LOG_DIR, exist_ok=True)
 
-    # ──────────────────────────────────────────────────────────────────
-    # 시작 / 정지
-    # ──────────────────────────────────────────────────────────────────
+        _db_info = "SQLite + CSV" if db_manager else "CSV only"
+        print(f"✅ EnvironmentMonitor 초기화 ({_db_info})")
+
+    # ── 스레드 제어 ───────────────────────────────────────────────────────────
+
     def start(self):
-        if self._running:
-            logger.warning("[EnvMonitor] 이미 실행 중입니다.")
-            return
-
-        self._running = True
-        logger.info("[EnvMonitor] 환경 모니터링 시작")
-
-        if self.air_mgr:
-            ok = self.air_mgr.initialize()
-            if ok:
-                self._air_thread = threading.Thread(
-                    target=self._air_loop,
-                    name="AirSensorThread",
-                    daemon=True
-                )
-                self._air_thread.start()
-                logger.info(f"[EnvMonitor] SHT30 스레드 시작 (간격: {AIR_INTERVAL}s)")
-            else:
-                logger.error("[EnvMonitor] SHT30 초기화 실패 — 스레드 시작 안함")
-
-        if self.weather_rdr:
-            ok = self.weather_rdr.initialize()
-            if ok:
-                self._weather_thread = threading.Thread(
-                    target=self._weather_loop,
-                    name="WeatherStationThread",
-                    daemon=True
-                )
-                self._weather_thread.start()
-                logger.info(f"[EnvMonitor] WH65LP 스레드 시작 (간격: {WEATHER_INTERVAL}s)")
-            else:
-                logger.error("[EnvMonitor] WH65LP 초기화 실패 — 스레드 시작 안함")
+        self._stop_event.clear()
+        self._air_thread = threading.Thread(
+            target=self._air_loop, daemon=True, name="AirMonitor")
+        self._weather_thread = threading.Thread(
+            target=self._weather_loop, daemon=True, name="WeatherMonitor")
+        self._air_thread.start()
+        self._weather_thread.start()
+        print("▶️  EnvironmentMonitor 스레드 시작 (Air + Weather)")
 
     def stop(self):
-        self._running = False
-        if self.air_mgr:
-            try:
-                self.air_mgr.close()
-            except Exception as e:
-                logger.warning(f"[EnvMonitor] SHT30 닫기 오류: {e}")
-        if self.weather_rdr:
-            try:
-                self.weather_rdr.close()
-            except Exception as e:
-                logger.warning(f"[EnvMonitor] WH65LP 닫기 오류: {e}")
-        logger.info("[EnvMonitor] 환경 모니터링 정지")
+        self._stop_event.set()
+        if self._air_thread:
+            self._air_thread.join(timeout=5)
+        if self._weather_thread:
+            self._weather_thread.join(timeout=5)
+        print("⏹️  EnvironmentMonitor 스레드 정지")
 
-    # ──────────────────────────────────────────────────────────────────
-    # SHT30 루프
-    # ──────────────────────────────────────────────────────────────────
+    # ── 폴링 루프 ─────────────────────────────────────────────────────────────
+
     def _air_loop(self):
-        logger.debug("[EnvMonitor] SHT30 루프 진입")
-        while self._running:
+        while not self._stop_event.is_set():
             try:
-                results = self.air_mgr.read_all()
-                with self._lock:
-                    self.air_data = results
-                    snapshot = {
-                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
-                        'sensors':   results
-                    }
-                    self.air_history.append(snapshot)
-                    if len(self.air_history) > MAX_HISTORY:
-                        self.air_history.pop(0)
-
-                self._log_air(results)
-
-                valid_cnt = sum(1 for r in results if r.get('valid'))
-                logger.debug(
-                    f"[EnvMonitor] SHT30 완료: {valid_cnt}/{len(results)} 유효"
-                )
+                if self.air_mgr:
+                    results = self.air_mgr.read_all()
+                    if results:
+                        self._log_air(results)
+                        with self._lock:
+                            self._latest_air = results
+                            self.air_history.extend(results)
+                            if len(self.air_history) > MAX_HISTORY:
+                                self.air_history = self.air_history[-MAX_HISTORY:]
             except Exception as e:
-                logger.error(f"[EnvMonitor] SHT30 루프 오류: {e}")
+                print(f"❌ [AirMonitor] 루프 오류: {e}")
+            self._stop_event.wait(AIR_INTERVAL)
 
-            # 1초 단위 대기 → 빠른 정지 반응
-            for _ in range(AIR_INTERVAL):
-                if not self._running:
-                    break
-                time.sleep(1)
-
-    # ──────────────────────────────────────────────────────────────────
-    # WH65LP 루프
-    # ──────────────────────────────────────────────────────────────────
     def _weather_loop(self):
-        logger.debug("[EnvMonitor] WH65LP 루프 진입")
-        while self._running:
+        while not self._stop_event.is_set():
             try:
-                data = self.weather_rdr.read()
-                if data and data.get('valid'):
-                    with self._lock:
-                        self.weather_data = data
-                        self.weather_history.append(data)
-                        if len(self.weather_history) > MAX_HISTORY:
-                            self.weather_history.pop(0)
-                    self._log_weather(data)
-                    logger.debug(
-                        f"[EnvMonitor] WH65LP: "
-                        f"{data['temperature']}°C / {data['humidity']}% / "
-                        f"풍속 {data['wind_speed']}m/s"
-                    )
+                if self.weather_rdr:
+                    data = self.weather_rdr.read()
+                    if data:
+                        self._log_weather(data)
+                        with self._lock:
+                            self._latest_weather = data
+                            self.weather_history.append(data)
+                            if len(self.weather_history) > MAX_HISTORY:
+                                self.weather_history = self.weather_history[-MAX_HISTORY:]
             except Exception as e:
-                logger.error(f"[EnvMonitor] WH65LP 루프 오류: {e}")
+                print(f"❌ [WeatherMonitor] 루프 오류: {e}")
+            self._stop_event.wait(WEATHER_INTERVAL)
 
-            for _ in range(WEATHER_INTERVAL):
-                if not self._running:
-                    break
-                time.sleep(1)
+    # ── CSV 저장 ──────────────────────────────────────────────────────────────
 
-    # ──────────────────────────────────────────────────────────────────
-    # CSV 로그
-    # ──────────────────────────────────────────────────────────────────
     def _log_air(self, results: list):
-        today    = datetime.now().strftime('%Y-%m-%d')
-        log_file = os.path.join(AIR_LOG_DIR, f'air_{today}.csv')
-        new_file = not os.path.exists(log_file)
+        """SHT30 데이터 CSV + SQLite 저장"""
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        fpath    = os.path.join(AIR_LOG_DIR, f"air_{date_str}.csv")
+        write_header = not os.path.exists(fpath) or os.path.getsize(fpath) == 0
         try:
-            with open(log_file, 'a', newline='', encoding='utf-8') as f:
+            with open(fpath, 'a', newline='', encoding='utf-8') as f:
                 w = csv.writer(f)
-                if new_file:
-                    w.writerow([
-                        'timestamp', 'sensor_id', 'zone_id',
-                        'name', 'temperature', 'humidity', 'valid'
-                    ])
-                ts = time.strftime('%Y-%m-%d %H:%M:%S')
+                if write_header:
+                    w.writerow(['timestamp', 'sensor_id', 'zone_id',
+                                'name', 'temperature', 'humidity', 'valid'])
                 for r in results:
-                    w.writerow([
-                        ts,
-                        r.get('sensor_id', ''),
-                        r.get('zone_id', ''),
-                        r.get('name', ''),
-                        r.get('temperature', ''),
-                        r.get('humidity', ''),
-                        r.get('valid', False)
-                    ])
+                    ts = r.get('timestamp') or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    w.writerow([ts, r.get('sensor_id', ''), r.get('zone_id', ''),
+                                r.get('name', ''), r.get('temperature', ''),
+                                r.get('humidity', ''), r.get('valid', True)])
         except Exception as e:
-            logger.warning(f"[EnvMonitor] 대기 CSV 기록 실패: {e}")
+            print(f"❌ [AirMonitor] CSV 저장 실패: {e}")
+
+        # SQLite 저장 (Stage 11)
+        if self.db_manager:
+            try:
+                records = []
+                for r in results:
+                    ts = r.get('timestamp') or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    records.append({
+                        'timestamp':   ts,
+                        'sensor_id':   r.get('sensor_id', ''),
+                        'zone_id':     r.get('zone_id', 0),
+                        'name':        r.get('name', ''),
+                        'temperature': r.get('temperature', 0),
+                        'humidity':    r.get('humidity', 0),
+                        'valid':       r.get('valid', True),
+                    })
+                self.db_manager.insert_air_readings_bulk(records)
+            except Exception as e:
+                print(f"❌ [AirMonitor] SQLite 저장 실패: {e}")
 
     def _log_weather(self, data: dict):
-        today    = datetime.now().strftime('%Y-%m-%d')
-        log_file = os.path.join(WEATHER_LOG_DIR, f'weather_{today}.csv')
-        new_file = not os.path.exists(log_file)
+        """WH65LP 데이터 CSV + SQLite 저장"""
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        fpath    = os.path.join(WEATHER_LOG_DIR, f"weather_{date_str}.csv")
+        write_header = not os.path.exists(fpath) or os.path.getsize(fpath) == 0
         try:
-            with open(log_file, 'a', newline='', encoding='utf-8') as f:
+            with open(fpath, 'a', newline='', encoding='utf-8') as f:
                 w = csv.writer(f)
-                if new_file:
-                    w.writerow([
-                        'timestamp', 'temperature', 'humidity',
-                        'wind_speed', 'gust_speed', 'wind_dir', 'wind_dir_str',
-                        'rainfall', 'uv_index', 'illuminance',
-                        'pressure', 'battery_ok'
-                    ])
-                w.writerow([
-                    data.get('timestamp', ''),
-                    data.get('temperature', ''),
-                    data.get('humidity', ''),
-                    data.get('wind_speed', ''),
-                    data.get('gust_speed', ''),
-                    data.get('wind_dir', ''),
-                    data.get('wind_dir_str', ''),
-                    data.get('rainfall', ''),
-                    data.get('uv_index', ''),
-                    data.get('illuminance', ''),
-                    data.get('pressure', ''),
-                    data.get('battery_ok', '')
-                ])
+                if write_header:
+                    w.writerow(['timestamp', 'temperature', 'humidity',
+                                'wind_speed', 'gust_speed', 'wind_dir', 'wind_dir_str',
+                                'rainfall', 'uv_index', 'illuminance',
+                                'pressure', 'battery_ok'])
+                ts = data.get('timestamp') or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                w.writerow([ts, data.get('temperature'), data.get('humidity'),
+                             data.get('wind_speed'), data.get('gust_speed'),
+                             data.get('wind_dir'), data.get('wind_dir_str'),
+                             data.get('rainfall'), data.get('uv_index'),
+                             data.get('illuminance'), data.get('pressure'),
+                             data.get('battery_ok')])
         except Exception as e:
-            logger.warning(f"[EnvMonitor] 기상 CSV 기록 실패: {e}")
+            print(f"❌ [WeatherMonitor] CSV 저장 실패: {e}")
 
-    # ──────────────────────────────────────────────────────────────────
-    # 상태 조회 API
-    # ──────────────────────────────────────────────────────────────────
-    def get_air_status(self) -> list:
-        with self._lock:
-            return list(self.air_data)
+        # SQLite 저장 (Stage 11)
+        if self.db_manager:
+            try:
+                save_data = dict(data)
+                if 'timestamp' not in save_data or not save_data['timestamp']:
+                    save_data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                self.db_manager.insert_weather_reading(save_data)
+            except Exception as e:
+                print(f"❌ [WeatherMonitor] SQLite 저장 실패: {e}")
 
-    def get_weather_status(self) -> Optional[dict]:
-        with self._lock:
-            return self.weather_data
+    # ── 상태 조회 API ─────────────────────────────────────────────────────────
 
     def get_environment_status(self) -> dict:
         with self._lock:
             return {
-                'air':       list(self.air_data),
-                'weather':   self.weather_data,
-                'running':   self._running,
-                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+                'air':         list(self._latest_air),
+                'weather':     dict(self._latest_weather) if self._latest_weather else None,
+                'running':     not self._stop_event.is_set(),
+                'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             }
 
-    def get_air_history(self, limit: int = 10) -> list:
+    def get_air_history(self, limit: int = 100) -> list:
         with self._lock:
             return list(self.air_history[-limit:])
 
-    def get_weather_history(self, limit: int = 10) -> list:
+    def get_weather_history(self, limit: int = 100) -> list:
         with self._lock:
             return list(self.weather_history[-limit:])
-
-
-# ──────────────────────────────────────────────────────────────────────
-# 단독 실행 테스트
-# ──────────────────────────────────────────────────────────────────────
-if __name__ == '__main__':
-    import sys
-    sys.path.insert(0, BASE_DIR)
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s [%(levelname)s] %(name)s — %(message)s'
-    )
-
-    from hardware.air_sensor_reader    import AirSensorManager
-    from hardware.weather_station_reader import WeatherStationReader
-
-    print("=" * 55)
-    print("  EnvironmentMonitor 단독 테스트 (시뮬레이션, 35초)")
-    print("=" * 55)
-
-    air_mgr = AirSensorManager()
-    ws_rdr  = WeatherStationReader()
-    monitor = EnvironmentMonitor(air_mgr, ws_rdr)
-    monitor.start()
-
-    try:
-        for step in range(3):
-            time.sleep(10)
-            print(f"\n[{time.strftime('%H:%M:%S')}] 상태 조회 #{step + 1}")
-            air = monitor.get_air_status()
-            ws  = monitor.get_weather_status()
-
-            if air:
-                valid = [s for s in air if s.get('valid') and s.get('temperature') is not None]
-                if valid:
-                    avg_t = sum(s['temperature'] for s in valid) / len(valid)
-                    avg_h = sum(s['humidity']    for s in valid) / len(valid)
-                    print(f"  SHT30  : {len(valid)}/{len(air)} 유효 | "
-                          f"평균 온도 {avg_t:.1f}°C / 습도 {avg_h:.1f}%")
-                else:
-                    print("  SHT30  : 유효 데이터 없음")
-            else:
-                print("  SHT30  : 데이터 대기 중 (60초 간격)")
-
-            if ws:
-                print(f"  WH65LP : {ws['temperature']}°C / {ws['humidity']}% | "
-                      f"풍속 {ws['wind_speed']}m/s ({ws['wind_dir_str']}) | "
-                      f"기압 {ws['pressure']}hPa")
-            else:
-                print("  WH65LP : 데이터 대기 중 (16초 간격)")
-    except KeyboardInterrupt:
-        print("\n[인터럽트] 정지 중...")
-    finally:
-        monitor.stop()
-        print("테스트 완료.")

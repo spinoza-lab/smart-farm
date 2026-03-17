@@ -32,6 +32,7 @@ from hardware.relay_controller import RelayController
 from hardware.modbus_soil_sensor import SoilSensorManager
 from irrigation.auto_controller import AutoIrrigationController
 from irrigation.scheduler import IrrigationScheduler
+from database.db_manager import DBManager
 from monitoring.data_logger import DataLogger
 from monitoring.alert_manager import AlertManager
 from monitoring.telegram_notifier import TelegramNotifier
@@ -141,7 +142,14 @@ def _watchdog_loop():
 
 def init_monitoring_system():
     try:
-        g.data_logger = DataLogger(log_dir=str(_BASE_DIR / 'logs'))
+        # Stage 11: SQLite DBManager 초기화
+        try:
+            g.db_manager = DBManager()
+            print("✅ DBManager 초기화 완료")
+        except Exception as _e:
+            print(f"⚠️  DBManager 초기화 실패: {_e}")
+            g.db_manager = None
+        g.data_logger = DataLogger(log_dir=str(_BASE_DIR / 'logs'), db_manager=g.db_manager)
         try:
             with open(str(_BASE_DIR / 'config/notifications.json')) as f:
                 _nc = json.load(f)
@@ -202,7 +210,8 @@ def init_monitoring_system():
             g.weather_station     = WeatherStationReader()
             g.environment_monitor = EnvironmentMonitor(
                 air_sensor_manager=g.air_sensor_manager,
-                weather_station_reader=g.weather_station
+                weather_station_reader=g.weather_station,
+                db_manager=g.db_manager
             )
             g.environment_monitor.start()
             print("✅ 환경 모니터링 초기화 완료 (SHT30 + WH65LP)")

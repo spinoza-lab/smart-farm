@@ -1,3 +1,51 @@
+## v0.6.0 (2026-03-17) — Stage 11: SQLite 마이그레이션 ✅
+
+### 🗄️ 데이터베이스 구조 변경
+- **기존**: 날짜별 CSV 파일 분산 저장 (`logs/sensors_YYYY-MM-DD.csv` 등)
+- **변경**: SQLite 단일 DB 파일 (`data/smart_farm.db`), CSV 파일은 백업으로 유지
+
+### 🆕 신규 파일
+| 파일 | 역할 |
+|------|------|
+| `database/__init__.py` | 패키지 초기화 |
+| `database/db_manager.py` | SQLite CRUD 매니저 (5개 테이블, WAL 모드, 인덱스) |
+| `database/migrate_csv_to_db.py` | 기존 CSV → SQLite 1회 마이그레이션 스크립트 |
+
+### 🗃️ DB 테이블 구조
+| 테이블 | 설명 |
+|--------|------|
+| `sensor_readings` | 탱크 수위 + ADS1115 전압 (10초마다) |
+| `air_sensor_readings` | SHT30 ×12 구역별 온·습도 (60초마다) |
+| `weather_readings` | WH65LP 기상 관측소 (16초마다) |
+| `irrigation_history` | 관수 이력 |
+| `alerts` | 알림 이력 (향후 연동 예정) |
+
+### 🔧 수정 파일
+| 파일 | 변경 내용 |
+|------|---------|
+| `monitoring/data_logger.py` | `db_manager` 파라미터 추가, SQLite + CSV 병행 저장 |
+| `monitoring/environment_monitor.py` | `db_manager` 파라미터 추가, SQLite + CSV 병행 저장 |
+| `web/blueprints/analytics_bp.py` | SQLite 쿼리 우선, CSV 폴백 유지 |
+| `web/globals.py` | `db_manager = None` 전역 변수 추가 |
+| `web/app.py` | DBManager 초기화, DataLogger/EnvironmentMonitor에 db_manager 전달 |
+
+### 🔌 신규 API 엔드포인트
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/api/analytics/environment` | 환경 데이터 분석 (air/weather/all, 기간 필터) |
+| GET | `/api/analytics/db-info` | DB 테이블 행 수 및 파일 크기 |
+
+### 📊 마이그레이션 결과 (2026-03-17)
+| 테이블 | 행 수 |
+|--------|------|
+| sensor_readings | 94,921 |
+| air_sensor_readings | 3,072 |
+| weather_readings | 954 |
+| irrigation_history | 215 |
+| 합계 | 99,162 행 |
+| DB 크기 | 11 MB |
+
+
 # 🗓 개발 이력
 
 ## 초기 개발

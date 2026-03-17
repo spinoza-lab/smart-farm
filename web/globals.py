@@ -81,3 +81,9 @@ environment_state = {
     'running':     False,
     'last_update': None
 }
+
+# ══════════════════════════════════════════════════════════════════════
+# Stage 11: SQLite DBManager 전역 변수
+# ══════════════════════════════════════════════════════════════════════
+db_manager = None  # database.db_manager.DBManager 인스턴스
+
