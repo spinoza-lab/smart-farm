@@ -1,0 +1,15 @@
+{
+  "port": "/dev/ttyAMA3",
+  "baudrate": 9600,
+  "timeout": 2.0,
+  "read_interval": 16,
+  "simulation_mode": true,
+  "packet_length": 25,
+  "packet_header": "0x24",
+  "crc_polynomial": "0x31",
+  "log_dir": "data/weather_logs",
+  "location": {
+    "name": "메인 기상 관측소",
+    "description": "농장 중앙 설치"
+  }
+}

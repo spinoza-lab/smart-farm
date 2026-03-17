@@ -1,0 +1,26 @@
+{
+  "port": "/dev/ttyAMA2",
+  "baudrate": 9600,
+  "timeout": 1.0,
+  "retries": 3,
+  "de_re_pin": 17,
+  "read_interval": 60,
+  "simulation_mode": true,
+  "sensors": [
+    {"id": 1,  "zone_id": 1,  "address": 1,  "name": "구역 1 대기",  "enabled": true},
+    {"id": 2,  "zone_id": 2,  "address": 2,  "name": "구역 2 대기",  "enabled": true},
+    {"id": 3,  "zone_id": 3,  "address": 3,  "name": "구역 3 대기",  "enabled": true},
+    {"id": 4,  "zone_id": 4,  "address": 4,  "name": "구역 4 대기",  "enabled": true},
+    {"id": 5,  "zone_id": 5,  "address": 5,  "name": "구역 5 대기",  "enabled": true},
+    {"id": 6,  "zone_id": 6,  "address": 6,  "name": "구역 6 대기",  "enabled": true},
+    {"id": 7,  "zone_id": 7,  "address": 7,  "name": "구역 7 대기",  "enabled": true},
+    {"id": 8,  "zone_id": 8,  "address": 8,  "name": "구역 8 대기",  "enabled": true},
+    {"id": 9,  "zone_id": 9,  "address": 9,  "name": "구역 9 대기",  "enabled": true},
+    {"id": 10, "zone_id": 10, "address": 10, "name": "구역 10 대기", "enabled": true},
+    {"id": 11, "zone_id": 11, "address": 11, "name": "구역 11 대기", "enabled": true},
+    {"id": 12, "zone_id": 12, "address": 12, "name": "구역 12 대기", "enabled": true},
+    {"id": 13, "zone_id": 13, "address": 13, "name": "센서 13 대기", "enabled": false},
+    {"id": 14, "zone_id": 14, "address": 14, "name": "센서 14 대기", "enabled": false},
+    {"id": 15, "zone_id": 15, "address": 15, "name": "센서 15 대기", "enabled": false}
+  ]
+}

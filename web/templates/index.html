@@ -297,6 +297,12 @@
                     <i class="bi bi-bell"></i> 경고 알림
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="env-tab" data-bs-toggle="tab"
+                        data-bs-target="#env" type="button">
+                    <i class="bi bi-thermometer-sun"></i> 환경 모니터링
+                </button>
+            </li>
         </ul>
 
         <!-- 탭 내용 -->
@@ -424,6 +430,100 @@
                 </div>
             </div>
 
+            <!-- 환경 모니터링 탭 (Stage 10) -->
+            <div class="tab-pane fade" id="env" role="tabpanel">
+
+                <!-- 기상 정보 카드 -->
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-cloud-sun text-warning"></i> <strong>기상 정보 (WH65LP)</strong></span>
+                        <span id="weather-update-time" class="text-muted" style="font-size:0.75rem;"></span>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3" id="weather-cards">
+                            <!-- 온도 -->
+                            <div class="col-6 col-md-3 col-xl-2">
+                                <div class="border rounded p-2 text-center h-100 shadow-sm">
+                                    <div style="font-size:1.8rem;">🌡️</div>
+                                    <div class="text-muted small">온도</div>
+                                    <div class="fw-bold fs-5" id="w-temp">--</div>
+                                    <div class="text-muted small">°C</div>
+                                </div>
+                            </div>
+                            <!-- 습도 -->
+                            <div class="col-6 col-md-3 col-xl-2">
+                                <div class="border rounded p-2 text-center h-100 shadow-sm">
+                                    <div style="font-size:1.8rem;">💧</div>
+                                    <div class="text-muted small">습도</div>
+                                    <div class="fw-bold fs-5" id="w-hum">--</div>
+                                    <div class="text-muted small">%</div>
+                                </div>
+                            </div>
+                            <!-- 풍속 -->
+                            <div class="col-6 col-md-3 col-xl-2">
+                                <div class="border rounded p-2 text-center h-100 shadow-sm">
+                                    <div style="font-size:1.8rem;">💨</div>
+                                    <div class="text-muted small">풍속 / 돌풍</div>
+                                    <div class="fw-bold fs-5" id="w-wind">--</div>
+                                    <div class="text-muted small">m/s &nbsp;<span id="w-dir" class="badge bg-secondary">--</span></div>
+                                </div>
+                            </div>
+                            <!-- 기압 -->
+                            <div class="col-6 col-md-3 col-xl-2">
+                                <div class="border rounded p-2 text-center h-100 shadow-sm">
+                                    <div style="font-size:1.8rem;">🔵</div>
+                                    <div class="text-muted small">기압</div>
+                                    <div class="fw-bold fs-5" id="w-pres">--</div>
+                                    <div class="text-muted small">hPa</div>
+                                </div>
+                            </div>
+                            <!-- 강수량 -->
+                            <div class="col-6 col-md-3 col-xl-2">
+                                <div class="border rounded p-2 text-center h-100 shadow-sm">
+                                    <div style="font-size:1.8rem;">🌧️</div>
+                                    <div class="text-muted small">강수량</div>
+                                    <div class="fw-bold fs-5" id="w-rain">--</div>
+                                    <div class="text-muted small">mm</div>
+                                </div>
+                            </div>
+                            <!-- UV 지수 -->
+                            <div class="col-6 col-md-3 col-xl-2">
+                                <div class="border rounded p-2 text-center h-100 shadow-sm">
+                                    <div style="font-size:1.8rem;">☀️</div>
+                                    <div class="text-muted small">UV 지수 / 조도</div>
+                                    <div class="fw-bold fs-5" id="w-uv">--</div>
+                                    <div class="text-muted small"><span id="w-lux">--</span> lux</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 시뮬레이션 배지 -->
+                        <div id="weather-sim-badge" class="mt-2 d-none">
+                            <span class="badge bg-warning text-dark"><i class="bi bi-cpu"></i> 시뮬레이션 모드</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 구역별 대기 온습도 (SHT30) -->
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-grid-3x3-gap text-success"></i> <strong>구역별 대기 온습도 (SHT30 × 12)</strong></span>
+                        <span id="air-update-time" class="text-muted" style="font-size:0.75rem;"></span>
+                    </div>
+                    <div class="card-body">
+                        <div id="air-sensor-grid"
+                             style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;">
+                            <!-- JS가 동적으로 채움 -->
+                            <div class="text-center text-muted p-3">데이터 로드 중...</div>
+                        </div>
+                        <div id="air-sim-badge" class="mt-2 d-none">
+                            <span class="badge bg-warning text-dark"><i class="bi bi-cpu"></i> 시뮬레이션 모드</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <!-- /환경 모니터링 탭 -->
+
         </div>
     </div>
 
@@ -435,6 +535,108 @@
 
     <!-- 폰트 크기 조절 스크립트 -->
     <script src="{{ url_for('static', filename='js/font-utils.js') }}?v={{ cache_ver }}"></script>
+
+
+    <!-- Stage 10: 환경 모니터링 JS -->
+    <script>
+    (function () {
+        'use strict';
+
+        // 풍향 숫자 → 문자 변환
+        function degToDir(deg) {
+            const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+                          'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+            return dirs[Math.round(deg / 22.5) % 16];
+        }
+
+        function fmt(v, dec=1) {
+            return (v == null || isNaN(v)) ? '--' : Number(v).toFixed(dec);
+        }
+
+        function setEl(id, val) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+        }
+
+        // 기상 패널 업데이트
+        function updateWeather(w) {
+            if (!w) return;
+            setEl('w-temp',  fmt(w.temperature));
+            setEl('w-hum',   fmt(w.humidity, 0));
+            setEl('w-wind',  fmt(w.wind_speed) + ' / ' + fmt(w.gust_speed));
+            setEl('w-dir',   degToDir(w.wind_direction || 0) + ' ' + (w.wind_direction||'--') + '°');
+            setEl('w-pres',  fmt(w.pressure));
+            setEl('w-rain',  fmt(w.rainfall));
+            setEl('w-uv',    fmt(w.uv_index));
+            setEl('w-lux',   w.illuminance ? Math.round(w.illuminance).toLocaleString() : '--');
+            const ts = w.timestamp ? w.timestamp.slice(11,19) : '';
+            setEl('weather-update-time', ts ? '업데이트: ' + ts : '');
+            const badge = document.getElementById('weather-sim-badge');
+            if (badge) badge.classList.toggle('d-none', !w.simulated);
+        }
+
+        // 대기 센서 그리드 업데이트
+        function updateAirGrid(airList) {
+            const grid = document.getElementById('air-sensor-grid');
+            if (!grid || !Array.isArray(airList) || airList.length === 0) return;
+
+            grid.innerHTML = '';
+            airList.forEach(function(s) {
+                const valid  = s.valid !== false;
+                const hum    = valid ? fmt(s.humidity) : '--';
+                const temp   = valid ? fmt(s.temperature) : '--';
+                const zLabel = s.zone_name || ('구역 ' + s.zone_id);
+                const border = valid ? 'border-success' : 'border-danger';
+                const icon   = valid ? '🌿' : '⚠️';
+                const card   = document.createElement('div');
+                card.className = 'border rounded p-2 text-center shadow-sm ' + border;
+                card.innerHTML =
+                    '<div style="font-size:1.4rem;">' + icon + '</div>' +
+                    '<div class="fw-bold small text-truncate" title="' + zLabel + '">' + zLabel + '</div>' +
+                    '<div class="mt-1">' +
+                    '  <span class="badge bg-primary">' + temp + ' °C</span>' +
+                    '  <span class="badge bg-info text-dark ms-1">' + hum + ' %</span>' +
+                    '</div>' +
+                    '<div class="text-muted" style="font-size:0.65rem;">' + (s.timestamp||'').slice(11,19) + '</div>';
+                grid.appendChild(card);
+            });
+
+            // 시뮬레이션 배지
+            const anySimulated = airList.some(function(s){ return s.simulated; });
+            const badge = document.getElementById('air-sim-badge');
+            if (badge) badge.classList.toggle('d-none', !anySimulated);
+
+            // 업데이트 시각
+            if (airList[0] && airList[0].timestamp) {
+                setEl('air-update-time', '업데이트: ' + airList[0].timestamp.slice(11,19));
+            }
+        }
+
+        // API 호출
+        async function loadEnvironmentData() {
+            try {
+                const res  = await fetch('/api/environment');
+                const json = await res.json();
+                if (json.success) {
+                    updateWeather(json.weather);
+                    updateAirGrid(json.air);
+                }
+            } catch (e) {
+                console.warn('[ENV] 환경 API 오류:', e);
+            }
+        }
+
+        // 탭 클릭 시 즉시 갱신
+        const envTab = document.getElementById('env-tab');
+        if (envTab) {
+            envTab.addEventListener('shown.bs.tab', loadEnvironmentData);
+        }
+
+        // 60초마다 자동 갱신
+        loadEnvironmentData();
+        setInterval(loadEnvironmentData, 60000);
+    })();
+    </script>
 
 </body>
 </html>
