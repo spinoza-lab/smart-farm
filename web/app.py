@@ -41,12 +41,14 @@ from web.blueprints.irrigation_bp    import irrigation_bp
 from web.blueprints.analytics_bp     import analytics_bp
 from web.blueprints.notifications_bp import notifications_bp
 from web.blueprints.download_bp      import download_bp
+from web.blueprints.environment_bp import environment_bp
 
 app.register_blueprint(monitoring_bp)
 app.register_blueprint(irrigation_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(notifications_bp)
 app.register_blueprint(download_bp)
+app.register_blueprint(environment_bp)
 
 @app.route('/')
 def index(): return render_template('index.html')
@@ -191,6 +193,21 @@ def init_monitoring_system():
             except Exception as e: print(f"⚠️  IrrigationScheduler 초기화 실패: {e}"); g.irrigation_scheduler = None
         except Exception as e:
             print(f"⚠️  토양 센서 초기화 실패: {e}"); g.soil_sensor_manager = None; g.auto_irrigation = None
+        # Stage 10: 환경 모니터링 초기화
+        try:
+            from hardware.air_sensor_reader      import AirSensorManager
+            from hardware.weather_station_reader import WeatherStationReader
+            from monitoring.environment_monitor  import EnvironmentMonitor
+            g.air_sensor_manager  = AirSensorManager()
+            g.weather_station     = WeatherStationReader()
+            g.environment_monitor = EnvironmentMonitor(
+                air_sensor_manager=g.air_sensor_manager,
+                weather_station_reader=g.weather_station
+            )
+            g.environment_monitor.start()
+            print("✅ 환경 모니터링 초기화 완료 (SHT30 + WH65LP)")
+        except Exception as e:
+            print(f"⚠️  환경 모니터링 초기화 실패: {e}")
         print("✅ 모니터링 시스템 초기화 완료")
         g.monitoring_active = True
         _start_periodic_sender()
@@ -214,6 +231,9 @@ def _graceful_shutdown(signum, frame):
         if g.auto_irrigation and g.auto_irrigation.is_irrigating:
             g.auto_irrigation._stop_requested = True; time.sleep(2)
     except Exception as e: print(f"  ⚠️ 관수 중단 오류: {e}")
+    try:
+        if g.environment_monitor: g.environment_monitor.stop(); print("✅ [종료] 환경 모니터 정지")
+    except Exception as e: print(f"⚠️ [종료] 환경 모니터 정지 실패: {e}")
     _emergency_relay_off()
     print("✅ 안전 종료 완료"); sys.exit(0)
 

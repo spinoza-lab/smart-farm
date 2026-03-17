@@ -412,3 +412,25 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(loadIrrigationStatus, 30000);
 });
 // patch_v3_irrigation_status_end
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Stage 10: 환경 모니터링 (대시보드 → 환경 탭 자동 갱신 지원)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// 60초마다 환경 API 폴링 (탭이 열려 있지 않을 때도 데이터 미리 캐시)
+let _envCache = null;
+
+async function loadEnvironmentBackground() {
+    try {
+        const res  = await fetch('/api/environment');
+        const json = await res.json();
+        if (json.success) {
+            _envCache = json;
+        }
+    } catch (e) {
+        // 무시
+    }
+}
+
+setInterval(loadEnvironmentBackground, 60000);
+loadEnvironmentBackground();

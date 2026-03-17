@@ -175,40 +175,49 @@
 
 ---
 
-## 🔮 v0.5.0 (예정) — Stage 10: 대기환경 모니터링
+## v0.5.0 (2026-03-17) — Stage 10: 대기 환경 모니터링 ✅
 
-> 하드웨어 주문 완료 (2026-03-11). 배송 후 구현 예정.
+### 🌡️ 신규 하드웨어 지원
+- **CDSENET EID041-G01 (SHT30)** × 12 — 구역별 대기 온도·습도 (RS-485 Modbus RTU, 9600bps)
+- **MISOL WH65LP** × 1 — 외부 기상 스테이션 (RS-485, 독자 25바이트 프로토콜, 16초 자동 송출)
 
-### 추가 하드웨어
-- **CDSENET EID041-G01 (SHT30)** × 12 — 구역별 대기 온도·습도 (RS-485 Modbus, 9600bps)
-- **MISOL WH65LP** × 1 — 외부 기상 스테이션 (RS-485, 독자 25바이트 프로토콜, 9600bps)
-- **MAX485 모듈** × 2 추가 (Bus 2/3)
+### 🆕 신규 파일
+| 파일 | 역할 |
+|------|------|
+| `config/air_sensors.json` | SHT30 × 12 Modbus 설정 (포트, baudrate, 센서 목록, simulation_mode) |
+| `config/weather_station.json` | WH65LP 설정 (포트, baudrate, 패킷 길이, simulation_mode) |
+| `hardware/air_sensor_reader.py` | SHT30 Modbus RTU 드라이버 (CRC-16, DE/RE GPIO 17 제어, simulate 지원) |
+| `hardware/weather_station_reader.py` | WH65LP 25바이트 패킷 파서 (CRC-8 poly 0x31, simulate 지원) |
+| `monitoring/environment_monitor.py` | 백그라운드 폴링 스레드 (SHT30 60초 / WH65LP 16초, CSV 로그) |
+| `web/blueprints/environment_bp.py` | 환경 REST API Blueprint (6개 엔드포인트) |
 
-### RS-485 버스 배선 계획
-| 버스 | UART | 경로 | TX | RX | DE/RE | 용도 |
-|------|------|------|----|----|-------|------|
-| Bus 1 | UART0 | /dev/ttyAMA0 | GPIO14 | GPIO15 | GPIO18 | 토양 센서 ×12 (기존) |
-| Bus 2 | UART3 | /dev/ttyAMA2 | GPIO4 (Pin7) | GPIO5 (Pin29) | GPIO17 (Pin11) | 대기 온습도 ×12 (신규) |
-| Bus 3 | UART4 | /dev/ttyAMA3 | GPIO8 (Pin24) | GPIO9 (Pin21) | GND (Pin25) | 기상 스테이션 ×1 (신규) |
+### 🔧 수정 파일
+| 파일 | 변경 내용 |
+|------|---------|
+| `web/globals.py` | `air_sensor_manager`, `weather_station`, `environment_monitor`, `environment_state` 추가 |
+| `web/app.py` | `environment_bp` 등록, `EnvironmentMonitor` 초기화/시작, 종료 시 stop() 호출 |
+| `web/templates/index.html` | 환경 모니터링 탭 추가 (기상 카드 6종 + SHT30 구역 그리드) |
+| `web/templates/analytics.html` | 환경 데이터 탭 추가 (요약 카드 4종 + 스냅샷 테이블 + 기상 배지) |
+| `web/static/js/dashboard.js` | 백그라운드 환경 API 폴링 추가 (60초 간격) |
 
-### 추가 소프트웨어 파일 목록
-```
-config/air_sensors.json          # SHT30 설정 (포트/baudrate/센서목록)
-config/weather_station.json      # WH65LP 설정 (포트/baudrate)
-hardware/air_sensor_reader.py    # SHT30 Modbus RTU 드라이버
-hardware/weather_station_reader.py  # WH65LP 패킷 파서
-monitoring/environment_monitor.py   # 백그라운드 폴링 스레드
-web/blueprints/environment_bp.py    # REST API (/api/environment/*)
-web/globals.py                   # 전역 변수 추가 (수정)
-web/app.py                       # Blueprint 등록 (수정)
-web/templates/index.html         # 대시보드 환경 섹션 추가 (수정)
-```
-
-### 계획된 API 엔드포인트
+### 🔌 신규 API 엔드포인트
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | GET | `/api/environment` | 전체 환경 데이터 (공기 + 기상) |
 | GET | `/api/environment/air` | 전체 SHT30 센서 데이터 |
 | GET | `/api/environment/air/<id>` | 특정 구역 SHT30 데이터 |
 | GET | `/api/environment/weather` | WH65LP 기상 데이터 |
-| POST | `/api/environment/air/<id>/enable` | 센서 활성화/비활성화 |
+| GET | `/api/environment/history/air` | 대기 센서 이력 (최근 100 스냅샷) |
+| GET | `/api/environment/history/weather` | 기상 이력 (최근 100 스냅샷) |
+
+### 🖥️ UI 변경
+- **대시보드** (`index.html`): 탭 3개 → 4개, 환경 모니터링 탭 추가
+  - 기상 정보 패널: 온도/습도/풍속+돌풍/기압/강수량/UV+조도 카드
+  - 구역별 SHT30 그리드: 12구역 동적 카드 (오류 구역 빨간 테두리)
+  - 60초 자동 갱신, 탭 클릭 즉시 갱신, 시뮬레이션 배지 표시
+- **분석 페이지** (`analytics.html`): 탭 4개 → 5개, 환경 데이터 탭 추가
+  - 요약 카드: 평균 온도/습도, 외부 온도, UV 지수
+  - 구역별 스냅샷 테이블 (12구역 전체, 이상 구역 빨간 행)
+  - 현재 기상 배지 패널 (WH65LP 실시간)
+
+> ⚠️ 현재 `simulation_mode: true` 상태 — 실제 하드웨어 수령 후 `false`로 전환 예정

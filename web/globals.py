@@ -66,3 +66,18 @@ def _save_schedules(data):
     os.makedirs(os.path.dirname(SCHEDULES_PATH), exist_ok=True)
     with open(SCHEDULES_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Stage 10: 환경 모니터링 전역 변수
+# ══════════════════════════════════════════════════════════════════════
+air_sensor_manager  = None
+weather_station     = None
+environment_monitor = None
+
+environment_state = {
+    'air':         [],
+    'weather':     None,
+    'running':     False,
+    'last_update': None
+}
