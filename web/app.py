@@ -1,6 +1,6 @@
 """
 Flask 웹 대시보드 메인 애플리케이션 (Blueprint 리팩터링)
-버전: v0.4.1 (refactor/blueprint)
+버전: v0.6.2 (Stage13/config-unify) — version.json으로 동적 관리
 """
 import os, sys, signal, threading, time, json, atexit
 from pathlib import Path
@@ -26,6 +26,21 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 import web.globals as g
 g._BASE_DIR = _BASE_DIR
+
+# ── Stage 13: version.json 동적 버전 로드 ─────────────────────────────────
+def _load_version() -> str:
+    """config/version.json 에서 버전 문자열을 읽어 반환. 실패 시 fallback."""
+    try:
+        _vf = _BASE_DIR / 'config' / 'version.json'
+        import json as _json
+        with open(str(_vf), encoding='utf-8') as _f:
+            return _json.load(_f).get('version', '0.0.0')
+    except Exception:
+        return '0.6.2'
+
+_APP_VERSION = _load_version()
+# ──────────────────────────────────────────────────────────────────────────────
+
 
 from monitoring.sensor_monitor import SensorMonitor
 from hardware.relay_controller import RelayController
@@ -217,7 +232,7 @@ def init_monitoring_system():
             print("✅ 환경 모니터링 초기화 완료 (SHT30 + WH65LP)")
         except Exception as e:
             print(f"⚠️  환경 모니터링 초기화 실패: {e}")
-        print("✅ 모니터링 시스템 초기화 완료")
+        print(f"✅ 모니터링 시스템 초기화 완료 (v{_APP_VERSION})")
         g.monitoring_active = True
         _start_periodic_sender()
         threading.Thread(target=_watchdog_loop, daemon=True, name="SenderWatchdog").start()
@@ -248,7 +263,7 @@ def _graceful_shutdown(signum, frame):
 
 if __name__ == '__main__':
     print("="*60)
-    print("🌐 스마트 관수 시스템 v0.4.1 (Blueprint)")
+    print(f"🌐 스마트 관수 시스템 v{_APP_VERSION} (Blueprint)")
     print("="*60)
     if init_monitoring_system():
         signal.signal(signal.SIGTERM, _graceful_shutdown)

@@ -1,3 +1,27 @@
+## v0.6.2 — Stage 13: 설정 통합 (2026-03-17)
+
+### 🔧 개선 사항
+
+#### config/version.json 추가 (버전 중앙화)
+- `config/version.json` 신규 추가: 버전, 스테이지, 릴리즈 날짜, 이력 포함
+- `web/app.py`: `_APP_VERSION = _load_version()` 전역 변수로 버전 동적 로드
+  - 부팅 시 출력: `🌐 스마트 관수 시스템 v0.6.2 (Blueprint)` (하드코딩 → 동적)
+  - docstring 업데이트 반영
+- 이전 `v0.4.1` 하드코딩 완전 제거
+
+#### config/notifications.json 쿨다운 통합
+- `cooldowns` 섹션 추가로 모듈별 쿨다운 명시:
+  - `cooldowns.alert_manager`: AlertManager 알림 쿨다운 (초)
+  - `cooldowns.sensor_monitor`: SensorMonitor 자체 쿨다운 (초)
+- 기존 최상위 키(`cooldown_seconds`, `sensor_monitor_cooldown`) 하위 호환 유지
+
+### 📄 변경 파일
+- `config/version.json` (신규)
+- `config/notifications.json` (cooldowns 섹션 추가)
+- `web/app.py` (버전 동적 로드 로직)
+
+---
+
 ## v0.6.0 (2026-03-17) — Stage 11: SQLite 마이그레이션 ✅
 
 ### 🗄️ 데이터베이스 구조 변경

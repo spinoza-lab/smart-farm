@@ -1,0 +1,12 @@
+{
+  "version": "0.6.2",
+  "stage": "Stage 13",
+  "release_date": "2026-03-17",
+  "description": "설정 통합 — version.json, 쿨다운 통합",
+  "history": [
+    {"version": "0.6.1", "stage": "Stage 12", "date": "2026-03-17", "description": "AlertManager SQLite 연동"},
+    {"version": "0.6.0", "stage": "Stage 11", "date": "2026-03-17", "description": "SQLite DBManager 마이그레이션"},
+    {"version": "0.5.0", "stage": "Stage 10", "date": "2026-03-17", "description": "환경 모니터링 (SHT30+WH65LP)"},
+    {"version": "0.4.1", "stage": "Stage 9.1", "date": "2026-03-17", "description": "BUG-14 I2C 내결함성"}
+  ]
+}
