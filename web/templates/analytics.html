@@ -9,8 +9,6 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <!-- Chart.js + 줌/팬 플러그인 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         :root{--font-size-base:18px;--font-size-title:24px;--font-size-small:14px;}
         body{font-size:var(--font-size-base);background-color:#f8f9fa;}
@@ -173,7 +171,7 @@
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span><i class="bi bi-graph-up"></i> 탱크 수위 추이</span>
                     <div class="d-flex gap-2">
-                        <button class="btn btn-outline-secondary btn-sm" onclick="resetTankZoom()"><i class="bi bi-zoom-out me-1"></i>줌 초기화</button>
+
                         <button class="btn btn-outline-success btn-sm" onclick="downloadSensorCSV()"><i class="bi bi-download me-1"></i>CSV</button>
                     </div>
                 </div>
@@ -182,7 +180,6 @@
                         <div class="loading-overlay" id="tank-loading"><div class="spinner-border text-primary"></div></div>
                         <canvas id="tank-chart" height="90"></canvas>
                     </div>
-                    <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>마우스 휠: 줌 &nbsp;|&nbsp; 드래그: 이동 &nbsp;|&nbsp; 더블클릭: 초기화</p>
                 </div>
             </div>
 
@@ -217,14 +214,13 @@
                     <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <span><i class="bi bi-bar-chart"></i> 일별 관수 횟수</span>
-                            <button class="btn btn-outline-secondary btn-sm" onclick="resetIrrZoom()"><i class="bi bi-zoom-out"></i></button>
+
                         </div>
                         <div class="card-body">
                             <div class="chart-wrap">
                                 <div class="loading-overlay" id="irr-loading"><div class="spinner-border text-warning"></div></div>
                                 <canvas id="irr-bar-chart" height="130"></canvas>
                             </div>
-                            <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>휠: 줌 &nbsp;|&nbsp; 드래그: 이동</p>
                         </div>
                     </div>
                 </div>
@@ -242,13 +238,12 @@
                     <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <span><i class="bi bi-clock-history"></i> 관수 지속 시간 추이 (초)</span>
-                            <button class="btn btn-outline-secondary btn-sm" onclick="resetDurZoom()"><i class="bi bi-zoom-out"></i></button>
+
                         </div>
                         <div class="card-body">
                             <div class="chart-wrap">
                                 <canvas id="dur-line-chart" height="80"></canvas>
                             </div>
-                            <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>휠: 줌 &nbsp;|&nbsp; 드래그: 이동</p>
                         </div>
                     </div>
                 </div>
@@ -370,14 +365,13 @@
                     </span>
                     <div class="d-flex gap-2">
                         <button class="btn btn-sm btn-outline-success" onclick="downloadAirCSV()"><i class="bi bi-download me-1"></i>SHT30 CSV</button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="if(charts.envTemp)charts.envTemp.resetZoom()"><i class="bi bi-zoom-out"></i> 줌 초기화</button>
+
                     </div>
                 </div>
                 <div class="card-body">
                     <div class="chart-wrap">
                         <canvas id="env-temp-chart" height="80"></canvas>
                     </div>
-                    <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>휠: 줌 &nbsp;|&nbsp; 드래그: 이동</p>
                 </div>
             </div>
 
@@ -386,14 +380,13 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-droplet-half text-primary"></i> <strong>SHT30 습도 추이 (구역 평균)</strong></span>
                     <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="if(charts.envHum)charts.envHum.resetZoom()"><i class="bi bi-zoom-out"></i> 줌 초기화</button>
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadAirCSV()"><i class="bi bi-download me-1"></i>SHT30 CSV</button>
                     </div>
                 </div>
                 <div class="card-body">
                     <div class="chart-wrap">
                         <canvas id="env-hum-chart" height="80"></canvas>
                     </div>
-                    <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>휠: 줌 &nbsp;|&nbsp; 드래그: 이동</p>
                 </div>
             </div>
 
@@ -407,14 +400,13 @@
                     </span>
                     <div class="d-flex gap-2">
                         <button class="btn btn-sm btn-outline-success" onclick="downloadWeatherCSV()"><i class="bi bi-download me-1"></i>날씨 CSV</button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="if(charts.envWx)charts.envWx.resetZoom()"><i class="bi bi-zoom-out"></i> 줌 초기화</button>
+
                     </div>
                 </div>
                 <div class="card-body">
                     <div class="chart-wrap">
                         <canvas id="env-weather-chart" height="90"></canvas>
                     </div>
-                    <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>휠: 줌 &nbsp;|&nbsp; 드래그: 이동</p>
                 </div>
             </div>
 

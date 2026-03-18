@@ -67,11 +67,7 @@ function normalizeTrigger(raw) {
    공통 줌/팬 옵션
 ───────────────────────────────────────── */
 function zoomPlugin(axis = 'x') {
-    return {
-        zoom: { wheel:{enabled:true}, pinch:{enabled:true}, mode:axis,
-                onZoomComplete({chart}){ chart.update('none'); } },
-        pan:  { enabled:true, mode:axis }
-    };
+    return {};  // Stage 14d: 휠 줌/팬 비활성화 (스크롤 방해 방지)
 }
 
 /* ─────────────────────────────────────────
