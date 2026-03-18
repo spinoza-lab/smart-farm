@@ -29,6 +29,54 @@
 
 ---
 
+## [v0.6.4] – 2026-03-18
+
+### 🐛 버그 수정 (Stage 14b)
+
+#### 문제 1: 분석 그래프 표시 범위 제한
+- **원인**: `analytics_bp.py`의 `query_sensor_readings(limit=2000)` 고정값으로
+  센서 기록 주기 20초 기준 최대 약 11시간분 데이터만 반환됨.
+  `query_air_readings(limit=5000)`은 12개 SHT30 센서 데이터 합산으로 약 7시간.
+- **수정**: 날짜 범위(`from`~`to`) 기반 동적 limit 계산 도입.
+  - `sensor-data`: `min(days × 5,400, 100,000)` (30일 → 100,000행, 2,000행 샘플링)
+  - `air-data`   : `min(days × 20,000, 100,000)`
+  - `weather-data`: `min(days × 1,500, 50,000)`
+- **효과**: 선택 기간 전체 데이터를 2,000포인트로 균등 샘플링하여 그래프에 표시.
+
+#### 문제 2: 원시 로그 트리거 표시 오류
+- **원인**: `analytics.js`가 `'manual'`, `'auto'` 영문 값만 처리.
+  DB에 한글(`수동`, `스케줄`, `텔레그램` 등) 또는 기타 유형이 저장된 경우
+  뱃지가 올바르게 표시되지 않음.
+- **수정**:
+  - `TRIGGER_MAP` 상수 도입 – 한/영 양방향 매핑 (`manual`↔`수동`,
+    `schedule`↔`스케줄`, `telegram`↔`텔레그램`, `sensor`↔`센서` 등).
+  - `renderTriggerDonut()` 전면 재작성 – 실제 DB 값 기반 동적 집계,
+    색상 팔레트 다양화.
+  - `buildTriggerFilter()` 신규 – 트리거 필터 드롭다운을 실제 DB 값으로 동적 생성.
+  - 브라우저 콘솔에 `[IRR] trigger_type 실제 값 샘플` 출력 (진단용).
+- **진단 엔드포인트**: `/api/analytics/trigger-stats` 신규 추가
+  (DB 내 `trigger_type` 값별 건수 반환).
+
+#### 문제 3: 환경 데이터 시뮬레이션 표시 & CSV 없음
+- **원인**: 시뮬레이션 모드에서도 `valid=1` 데이터가 저장되어 차트가 표시됨.
+  사용자가 실제 센서 데이터와 혼동; 환경 데이터 CSV 다운로드 미제공.
+- **수정**:
+  - `analytics_environment()` 응답에 `simulation_mode` 플래그 추가
+    (`g.simulation_mode` 참조).
+  - 시뮬레이션 시 차트 헤더에 주황색 "시뮬레이션" 뱃지 표시,
+    차트 레이블에 `[시뮬레이션]` 접미사, 테두리 색상 주황으로 변경.
+  - 환경 탭 상단에 경고 배너 (`#sim-mode-banner`) 표시.
+  - **SHT30 CSV 다운로드** 버튼 추가: `GET /api/download/air-data`
+  - **WH65LP CSV 다운로드** 버튼 추가: `GET /api/download/weather-data`
+
+### 📁 변경 파일
+| 파일 | 변경 내용 |
+|------|-----------|
+| `web/blueprints/analytics_bp.py` | 동적 limit, trigger-stats 엔드포인트 |
+| `web/blueprints/download_bp.py`  | air/weather CSV 엔드포인트 신규 |
+| `web/static/js/analytics.js`     | TRIGGER_MAP, 동적 도넛, 환경 CSV |
+| `web/templates/analytics.html`   | 시뮬 뱃지, CSV 버튼, 트리거 필터 |
+
 ## v0.6.2 — Stage 13: 설정 통합 (2026-03-17)
 
 ### 🔧 개선 사항

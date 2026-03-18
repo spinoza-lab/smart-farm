@@ -1,21 +1,20 @@
 """
-analytics_bp.py (Stage 11 – SQLite 우선, CSV 폴백)
-기존 CSV 쿼리를 SQLite DBManager로 교체하되,
-db_manager 가 없으면 기존 CSV 로직으로 폴백
+analytics_bp.py (Stage 14b – 날짜 범위 limit 동적화, 시뮬레이션 플래그 추가)
 
-변경점:
-  - analytics_sensor_data() : DBManager.query_sensor_readings() 사용
-  - analytics_irrigation_history() : DBManager.query_irrigation_history() 사용
-  - /api/analytics/environment : 신규 (air + weather 데이터)
+변경점 (v0.6.4):
+  - sensor-data  : 날짜 범위 기반 동적 limit (최대 100,000행 → 2,000행 샘플링)
+  - environment  : 날짜 범위 기반 동적 limit + simulation_mode 플래그 반환
+  - trigger-stats: 신규 진단 엔드포인트 (trigger_type 실제 값 확인용)
 
 작성자: spinoza-lab
-날짜:   2026-03-17
+날짜:   2026-03-18
 """
 
 import csv
 import glob
 import os
 import statistics
+from datetime import datetime as _dt
 from flask import Blueprint, jsonify, render_template, request
 import web.globals as g
 
@@ -47,6 +46,20 @@ def _calc_stats(values: list, rows_ref: list) -> dict:
     }
 
 
+def _calc_day_limit(date_from, date_to, rows_per_day: int, cap: int) -> int:
+    """날짜 범위로 동적 limit 계산"""
+    try:
+        if date_from and date_to:
+            d1 = _dt.strptime(date_from, '%Y-%m-%d')
+            d2 = _dt.strptime(date_to,   '%Y-%m-%d')
+            days = max(1, (d2 - d1).days + 1)
+        else:
+            days = 7  # 기본값
+        return min(days * rows_per_day, cap)
+    except Exception:
+        return cap
+
+
 # ── /api/analytics/sensor-data ───────────────────────────────────────────────
 
 @analytics_bp.route('/api/analytics/sensor-data')
@@ -59,17 +72,25 @@ def analytics_sensor_data():
         try:
             start = f"{date_from} 00:00:00" if date_from else None
             end   = f"{date_to} 23:59:59"   if date_to   else None
+
+            # ★ 날짜 범위 기반 동적 limit
+            # 센서 기록 주기 ~20초 → 1일 ≈ 4,320행, 여유 25% 추가 → 5,400
+            # 최대 100,000행 (약 6.4일치 full 데이터 or 30일치 샘플링)
+            dyn_limit = _calc_day_limit(date_from, date_to,
+                                        rows_per_day=5400, cap=100_000)
+
             rows = g.db_manager.query_sensor_readings(
-                start=start, end=end, hours=168, limit=2000
+                start=start, end=end, hours=168, limit=dyn_limit
             )
             MAX_ROWS = 2000
-            step = max(1, len(rows) // MAX_ROWS)
+            step    = max(1, len(rows) // MAX_ROWS)
             sampled = rows[::step]
-            stats = g.db_manager.get_sensor_stats(start=start, end=end)
+            stats   = g.db_manager.get_sensor_stats(start=start, end=end)
             return jsonify({
                 'success': True,
                 'data':    sampled,
                 'total':   len(rows),
+                'sampled': len(sampled),
                 'stats': {
                     'tank1': {
                         'count':           stats['count'],
@@ -168,7 +189,7 @@ def analytics_irrigation_history():
 @analytics_bp.route('/api/analytics/environment')
 def analytics_environment():
     """
-    환경 데이터 분석 API (Stage 11 신규)
+    환경 데이터 분석 API (Stage 14b – 동적 limit + 시뮬레이션 플래그)
     쿼리 파라미터:
       from  – YYYY-MM-DD (기본: 7일 전)
       to    – YYYY-MM-DD (기본: 오늘)
@@ -185,30 +206,75 @@ def analytics_environment():
         start = f"{date_from} 00:00:00" if date_from else None
         end   = f"{date_to} 23:59:59"   if date_to   else None
 
-        result = {'success': True}
+        # ★ 시뮬레이션 모드 여부 (app.py 글로벌에서 읽기)
+        simulation_mode = bool(getattr(g, 'simulation_mode', False))
+
+        result = {
+            'success':         True,
+            'simulation_mode': simulation_mode,
+        }
 
         if data_type in ('air', 'all'):
+            # ★ 동적 limit:
+            # SHT30 12개 × 기록 주기 ~5초 → 1시간 = 12 × 720 = 8,640행
+            # 1일 = 207,360행 → 전체 조회는 무리; 100,000행 ≈ 11.5h분 full
+            # 날짜별 cap: 소량 요청(1일)엔 20,000, 장기 요청엔 100,000
+            air_limit = _calc_day_limit(date_from, date_to,
+                                        rows_per_day=20_000, cap=100_000)
             air_rows = g.db_manager.query_air_readings(
-                start=start, end=end, hours=168, limit=5000
+                start=start, end=end, hours=168, limit=air_limit
             )
-            # 샘플링 (최대 2000 행)
-            step = max(1, len(air_rows) // 2000)
+            # 차트용 샘플링 (최대 5,000행 – JS에서 timestamp 집계 후 실제 포인트 감소)
+            step = max(1, len(air_rows) // 5000)
             result['air'] = {
                 'data':  air_rows[::step],
                 'total': len(air_rows),
             }
 
         if data_type in ('weather', 'all'):
+            # WH65LP 1개 × ~60초 → 1일 = 1,440행
+            wx_limit = _calc_day_limit(date_from, date_to,
+                                       rows_per_day=1500, cap=50_000)
             wx_rows = g.db_manager.query_weather_readings(
-                start=start, end=end, hours=168, limit=2000
+                start=start, end=end, hours=168, limit=wx_limit
             )
+            step = max(1, len(wx_rows) // 2000)
             result['weather'] = {
-                'data':  wx_rows,
+                'data':  wx_rows[::step],
                 'total': len(wx_rows),
             }
 
         return jsonify(result)
 
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── /api/analytics/trigger-stats (진단) ──────────────────────────────────────
+
+@analytics_bp.route('/api/analytics/trigger-stats')
+def analytics_trigger_stats():
+    """
+    관수 트리거 유형 분포 조회 (디버깅·진단용)
+    DB에 실제 저장된 trigger_type 값과 건수를 반환합니다.
+    """
+    if not getattr(g, 'db_manager', None):
+        return jsonify({'success': False, 'error': 'DBManager 미초기화'}), 503
+    try:
+        import sqlite3
+        conn = sqlite3.connect(g.db_manager.db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COALESCE(trigger_type, '(null)') AS trigger_type,
+                   COUNT(*) AS cnt
+            FROM   irrigation_history
+            GROUP  BY trigger_type
+            ORDER  BY cnt DESC
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return jsonify({'success': True, 'trigger_distribution': rows})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

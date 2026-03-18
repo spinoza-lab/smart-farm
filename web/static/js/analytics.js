@@ -1,5 +1,10 @@
-/* analytics.js – 스마트 관수 시스템 데이터 분석 페이지 v2.0
-   Stage 14: BUG-18 수정 (컬럼명 불일치) + 환경 데이터 시계열 차트 추가
+/* analytics.js – 스마트 관수 시스템 데이터 분석 페이지 v2.1
+   Stage 14b:
+     - BUG: 그래프 표시 범위 제한 수정 (백엔드 limit 수정과 연계, JS 샘플링 파라미터 조정)
+     - BUG: 트리거 표시 오류 수정 (한/영 모두 지원, 모든 유형 레이블 추가)
+     - BUG: 환경 데이터 시뮬레이션 모드 표시 개선
+     - NEW: 환경 데이터 CSV 다운로드 (SHT30 / WH65LP)
+     - NEW: 트리거 필터 동적 생성 (실제 DB 값 반영)
 */
 'use strict';
 
@@ -7,14 +12,56 @@
    전역 상태
 ───────────────────────────────────────── */
 const state = {
-    sensorRows: [],
-    irrRows:    [],
-    filteredIrr:[],
+    sensorRows:  [],
+    irrRows:     [],
+    filteredIrr: [],
     fromDate: '',
     toDate:   '',
+    simulationMode: false,   // ★ 시뮬레이션 모드 플래그
 };
 
 const charts = {};
+
+/* ─────────────────────────────────────────
+   트리거 유형 매핑 (한/영 양방향)
+───────────────────────────────────────── */
+const TRIGGER_MAP = {
+    // English keys
+    'manual':   { ko: '수동',   cls: 'bg-warning text-dark' },
+    'auto':     { ko: '자동',   cls: 'bg-success' },
+    'schedule': { ko: '스케줄', cls: 'bg-primary' },
+    'telegram': { ko: '텔레그램', cls: 'bg-info text-dark' },
+    'sensor':   { ko: '센서',   cls: 'bg-secondary' },
+    'timer':    { ko: '타이머', cls: 'bg-dark' },
+    'app':      { ko: 'APP',    cls: 'bg-secondary' },
+    // Korean keys (DB에 한글로 저장된 경우)
+    '수동':     { ko: '수동',   cls: 'bg-warning text-dark' },
+    '자동':     { ko: '자동',   cls: 'bg-success' },
+    '스케줄':   { ko: '스케줄', cls: 'bg-primary' },
+    '텔레그램': { ko: '텔레그램', cls: 'bg-info text-dark' },
+    '센서':     { ko: '센서',   cls: 'bg-secondary' },
+    '타이머':   { ko: '타이머', cls: 'bg-dark' },
+    // 축약/변형
+    'sched':    { ko: '스케줄', cls: 'bg-primary' },
+    'tg':       { ko: '텔레그램', cls: 'bg-info text-dark' },
+    'man':      { ko: '수동',   cls: 'bg-warning text-dark' },
+};
+
+/** trigger_type 값 → 뱃지 HTML */
+function triggerBadge(raw) {
+    const key  = (raw || '').trim().toLowerCase();
+    const info = TRIGGER_MAP[key] || TRIGGER_MAP[(raw || '').trim()];
+    if (info) return `<span class="badge ${info.cls}">${info.ko}</span>`;
+    if (!key)  return `<span class="badge bg-light text-muted">—</span>`;
+    return `<span class="badge bg-secondary">${raw}</span>`;
+}
+
+/** trigger_type 값 → 정규화 키 (도넛·필터 집계용) */
+function normalizeTrigger(raw) {
+    const key  = (raw || '').trim().toLowerCase();
+    const info = TRIGGER_MAP[key] || TRIGGER_MAP[(raw || '').trim()];
+    return info ? info.ko : (raw || '기타');
+}
 
 /* ─────────────────────────────────────────
    공통 줌/팬 옵션
@@ -87,6 +134,7 @@ async function loadSensorData() {
         if (!json.success) { console.warn('sensor data:', json.error); return; }
 
         state.sensorRows = json.data || [];
+        console.log(`[SENSOR] total=${json.total}, sampled=${json.sampled||json.data?.length}`);
         renderTankChart();
         renderTankStats(json.stats);
         updateSummary();
@@ -96,7 +144,8 @@ async function loadSensorData() {
 function renderTankChart() {
     const rows = state.sensorRows;
     if (!rows.length) return;
-    const MAX  = 800;
+    // ★ 차트 포인트 수 증가: 800→1500 (백엔드가 더 많은 데이터를 보냄)
+    const MAX  = 1500;
     const step = Math.max(1, Math.floor(rows.length / MAX));
     const sampled = rows.filter((_, i) => i % step === 0);
     const labels  = sampled.map(r => r.timestamp);
@@ -171,7 +220,15 @@ async function loadIrrigationHistory() {
         state.irrRows     = json.data || [];
         state.filteredIrr = [...state.irrRows];
 
+        // ★ 실제 DB trigger_type 값 디버그 출력
+        const triggerSample = [...new Set(
+            state.irrRows.map(r => r.trigger_type || r.trigger || '(empty)')
+        )].slice(0, 10);
+        console.log('[IRR] trigger_type 실제 값 샘플:', triggerSample);
+        console.log(`[IRR] source=${json.source}, total=${json.total||state.irrRows.length}`);
+
         buildZoneFilter();
+        buildTriggerFilter();  // ★ 동적 트리거 필터 생성
         renderIrrBarChart();
         renderTriggerDonut();
         renderDurLineChart();
@@ -214,26 +271,37 @@ function renderIrrBarChart() {
     setText('stat-irr-time', fmtSec(totalSec));
 }
 
-/* 트리거 비율 도넛
-   BUG-18 수정: r.trigger → r.trigger_type */
+/* ★ 트리거 도넛 – 모든 유형 동적 집계
+   trigger_type (SQLite) / trigger (CSV) 모두 처리, 한/영 정규화 */
 function renderTriggerDonut() {
     const rows = state.filteredIrr;
-    let manual = 0, auto = 0, other = 0;
+    const countMap = {};
     rows.forEach(r => {
-        // BUG-18 FIX: SQLite 컬럼명은 trigger_type (CSV 폴백 호환: trigger)
-        const t = (r.trigger_type || r.trigger || '').toLowerCase();
-        if (t === 'manual') manual++;
-        else if (t === 'auto') auto++;
-        else other++;
+        const raw = r.trigger_type || r.trigger || '';
+        const key = normalizeTrigger(raw);
+        countMap[key] = (countMap[key] || 0) + 1;
     });
+    const labels = Object.keys(countMap);
+    const data   = labels.map(k => countMap[k]);
+
+    // 색상 팔레트
+    const palette = {
+        '수동':     '#ffc107',
+        '자동':     '#4caf50',
+        '스케줄':   '#2196f3',
+        '텔레그램': '#00bcd4',
+        '센서':     '#9e9e9e',
+        '타이머':   '#607d8b',
+        'APP':      '#9c27b0',
+        '기타':     '#e0e0e0',
+    };
+    const colors = labels.map(l => palette[l] || '#aaa');
+
     const ctx = document.getElementById('trigger-donut').getContext('2d');
     if (charts.donut) charts.donut.destroy();
     charts.donut = new Chart(ctx, {
         type: 'doughnut',
-        data: { labels:['수동','자동','기타'],
-                datasets:[{ data:[manual,auto,other],
-                            backgroundColor:['#ffc107','#4caf50','#9e9e9e'],
-                            borderWidth:2 }]},
+        data: { labels, datasets:[{ data, backgroundColor:colors, borderWidth:2 }]},
         options:{
             responsive:true,
             plugins:{ legend:{ position:'bottom', labels:{ font:{size:12} }},
@@ -275,7 +343,6 @@ function resetDurZoom() { if (charts.durLine) charts.durLine.resetZoom(); }
 
 /* ─────────────────────────────────────────
    구역별 통계
-   BUG-18 수정: r.success → r.status
 ───────────────────────────────────────── */
 function renderZoneCharts() {
     const rows   = state.filteredIrr;
@@ -288,7 +355,6 @@ function renderZoneCharts() {
         zoneMap[z].cnt++;
         zoneMap[z].totalSec += parseInt(r.duration_sec) || 0;
         if ((r.timestamp||'') > zoneMap[z].lastTime) zoneMap[z].lastTime = r.timestamp || '';
-        // BUG-18 FIX: SQLite는 status 컬럼 ('completed'/'failed'), CSV는 success('true'/'false')
         const st = (r.status || '').toLowerCase();
         const ok = r.status != null
             ? (st !== 'failed' && st !== 'false')
@@ -359,7 +425,6 @@ function renderZoneCharts() {
 
 /* ─────────────────────────────────────────
    원시 로그 테이블
-   BUG-18 수정: r.trigger→r.trigger_type, r.success→r.status, r.moisture_before→r.water_before
 ───────────────────────────────────────── */
 function buildZoneFilter() {
     const sel   = document.getElementById('log-zone-filter');
@@ -369,15 +434,38 @@ function buildZoneFilter() {
         zones.map(z => `<option value="${z}" ${z==cur?'selected':''}>구역 ${z}</option>`).join('');
 }
 
+/** ★ 트리거 필터 동적 생성 – 실제 DB 값 기반 */
+function buildTriggerFilter() {
+    const sel = document.getElementById('log-trigger-filter');
+    if (!sel) return;
+    const cur = sel.value;
+
+    // 실제 데이터에 있는 trigger 유형 수집 (정규화된 한글 키)
+    const rawTypes = [...new Set(
+        state.irrRows.map(r => r.trigger_type || r.trigger || '')
+    )].filter(Boolean).sort();
+
+    sel.innerHTML = '<option value="">전체 트리거</option>';
+    rawTypes.forEach(raw => {
+        const norm = normalizeTrigger(raw);
+        const opt  = document.createElement('option');
+        opt.value       = raw;
+        opt.textContent = norm;
+        if (raw === cur) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
 function renderLogTable() {
     const zoneF    = document.getElementById('log-zone-filter').value;
     const triggerF = document.getElementById('log-trigger-filter').value;
 
     const rows = state.irrRows.filter(r => {
-        if (zoneF    && String(r.zone_id) !== zoneF) return false;
-        // BUG-18 FIX: trigger_type (SQLite) 또는 trigger (CSV) 모두 확인
-        const tType = (r.trigger_type || r.trigger || '').toLowerCase();
-        if (triggerF && tType !== triggerF) return false;
+        if (zoneF && String(r.zone_id) !== zoneF) return false;
+        if (triggerF) {
+            const raw = r.trigger_type || r.trigger || '';
+            if (raw !== triggerF) return false;
+        }
         return true;
     });
 
@@ -392,19 +480,12 @@ function renderLogTable() {
         const dt   = r.timestamp ? new Date(r.timestamp) : null;
         const time = dt ? dt.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
 
-        // BUG-18 FIX: trigger_type (SQLite) 우선, trigger (CSV) 폴백
-        const tType   = (r.trigger_type || r.trigger || '').toLowerCase();
-        const trigger = tType === 'auto'
-            ? '<span class="badge bg-success">자동</span>'
-            : tType === 'manual'
-            ? '<span class="badge bg-warning text-dark">수동</span>'
-            : `<span class="badge bg-secondary">${tType||'—'}</span>`;
+        // ★ 트리거 뱃지 (TRIGGER_MAP 사용)
+        const trigger = triggerBadge(r.trigger_type || r.trigger);
 
-        // BUG-18 FIX: water_before (SQLite) 우선, moisture_before (CSV) 폴백
         const waterBefore = r.water_before != null ? r.water_before : r.moisture_before;
         const moist = waterBefore != null ? parseFloat(waterBefore).toFixed(1) + '%' : '—';
 
-        // BUG-18 FIX: status (SQLite) 우선, success (CSV) 폴백
         const isFailed = r.status != null
             ? (r.status || '').toLowerCase() === 'failed'
             : String(r.success).toLowerCase() === 'false';
@@ -412,8 +493,7 @@ function renderLogTable() {
             ? '<span class="text-danger"><i class="bi bi-x-circle"></i> 실패</span>'
             : '<span class="text-success"><i class="bi bi-check-circle"></i> 완료</span>';
 
-        // zone_name 표시 (SQLite에서 제공)
-        const zoneName = r.zone_name ? `${r.zone_name}` : `구역 ${r.zone_id||'—'}`;
+        const zoneName = r.zone_name ? r.zone_name : `구역 ${r.zone_id||'—'}`;
 
         return `<tr>
             <td class="ps-3 text-muted">${time}</td>
@@ -429,7 +509,7 @@ function renderLogTable() {
 }
 
 /* ─────────────────────────────────────────
-   환경 데이터 로드 & 시계열 차트 (Stage 14 신규)
+   환경 데이터 로드 & 시계열 차트 (Stage 14b 개선)
 ───────────────────────────────────────── */
 async function loadEnvData() {
     try {
@@ -446,8 +526,15 @@ async function loadEnvData() {
             return;
         }
 
+        // ★ 시뮬레이션 모드 플래그 저장
+        state.simulationMode = json.simulation_mode === true;
+        console.log('[ENV] simulation_mode:', state.simulationMode);
+
         const airRows = (json.air  && json.air.data)     || [];
         const wxRows  = (json.weather && json.weather.data) || [];
+
+        // ★ 시뮬레이션 배너 표시
+        _updateSimBanners(state.simulationMode);
 
         renderEnvAirChart(airRows);
         renderEnvWeatherChart(wxRows);
@@ -456,20 +543,33 @@ async function loadEnvData() {
     } catch (e) { console.error('[ENV] 환경 데이터 로드 오류:', e); }
 }
 
-/* SHT30 온도·습도 시계열 차트 (타임스탬프별 유효 센서 평균) */
+/** ★ 시뮬레이션 모드 배너 표시/숨김 */
+function _updateSimBanners(isSimulation) {
+    // 환경 탭 내 카드 헤더에 시뮬레이션 뱃지 동적 삽입
+    ['sim-badge-air', 'sim-badge-weather'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.style.display = isSimulation ? 'inline-block' : 'none';
+    });
+    // 환경 탭 헤더 배너
+    const tabBanner = document.getElementById('sim-mode-banner');
+    if (tabBanner) {
+        tabBanner.style.display = isSimulation ? 'block' : 'none';
+    }
+}
+
+/* SHT30 온도·습도 시계열 차트 */
 function renderEnvAirChart(airRows) {
-    // 유효 데이터만 필터링 (valid = 1 or true)
     const validRows = airRows.filter(r => r.valid == 1 || r.valid === true);
     if (!validRows.length) {
         ['env-temp-chart','env-hum-chart'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.parentElement.innerHTML =
-                '<div class="empty-state"><i class="bi bi-inbox"></i>SHT30 데이터 없음 (시뮬레이션 모드)</div>';
+                '<div class="empty-state"><i class="bi bi-inbox"></i>SHT30 데이터 없음</div>';
         });
         return;
     }
 
-    // 타임스탬프별 집계
     const tsMap = {};
     validRows.forEach(r => {
         const ts = r.timestamp;
@@ -478,27 +578,26 @@ function renderEnvAirChart(airRows) {
         if (r.humidity    != null) tsMap[ts].hums.push(Number(r.humidity));
     });
 
-    // 다운샘플 (최대 600 포인트)
     const allTs  = Object.keys(tsMap).sort();
-    const MAX    = 600;
+    const MAX    = 1000;
     const step   = Math.max(1, Math.floor(allTs.length / MAX));
     const labels = allTs.filter((_,i) => i % step === 0);
     const avg    = (arr) => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
     const temps  = labels.map(ts => { const v=avg(tsMap[ts].temps); return v!=null?+v.toFixed(1):null; });
     const hums   = labels.map(ts => { const v=avg(tsMap[ts].hums);  return v!=null?+v.toFixed(1):null; });
-    const xLabels= labels.map(ts => ts.slice(5,16));  // MM-DD HH:MM
+    const xLabels= labels.map(ts => ts.slice(5,16));
 
-    // ── 온도 차트 ──
     const ctxT = document.getElementById('env-temp-chart');
     if (ctxT) {
         if (charts.envTemp) charts.envTemp.destroy();
         charts.envTemp = new Chart(ctxT.getContext('2d'), {
             type: 'line',
             data: { labels: xLabels, datasets: [{
-                label: '평균 온도 (°C)', data: temps,
-                borderColor: '#f44336', backgroundColor: 'rgba(244,67,54,0.08)',
-                borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.3,
-                spanGaps: true
+                label: state.simulationMode ? '평균 온도 (°C) [시뮬레이션]' : '평균 온도 (°C)',
+                data: temps,
+                borderColor: state.simulationMode ? '#ff9800' : '#f44336',
+                backgroundColor: state.simulationMode ? 'rgba(255,152,0,0.08)' : 'rgba(244,67,54,0.08)',
+                borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.3, spanGaps: true
             }]},
             options: {
                 responsive: true,
@@ -514,17 +613,17 @@ function renderEnvAirChart(airRows) {
         });
     }
 
-    // ── 습도 차트 ──
     const ctxH = document.getElementById('env-hum-chart');
     if (ctxH) {
         if (charts.envHum) charts.envHum.destroy();
         charts.envHum = new Chart(ctxH.getContext('2d'), {
             type: 'line',
             data: { labels: xLabels, datasets: [{
-                label: '평균 습도 (%)', data: hums,
-                borderColor: '#2196f3', backgroundColor: 'rgba(33,150,243,0.08)',
-                borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.3,
-                spanGaps: true
+                label: state.simulationMode ? '평균 습도 (%) [시뮬레이션]' : '평균 습도 (%)',
+                data: hums,
+                borderColor: state.simulationMode ? '#ff9800' : '#2196f3',
+                backgroundColor: state.simulationMode ? 'rgba(255,152,0,0.06)' : 'rgba(33,150,243,0.08)',
+                borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.3, spanGaps: true
             }]},
             options: {
                 responsive: true,
@@ -541,16 +640,16 @@ function renderEnvAirChart(airRows) {
     }
 }
 
-/* WH65LP 날씨 시계열 차트 (기온, 습도, UV, 강수량) */
+/* WH65LP 날씨 시계열 차트 */
 function renderEnvWeatherChart(wxRows) {
     if (!wxRows.length) {
         const el = document.getElementById('env-weather-chart');
         if (el) el.parentElement.innerHTML =
-            '<div class="empty-state"><i class="bi bi-cloud-slash"></i>WH65LP 날씨 데이터 없음 (시뮬레이션 모드)</div>';
+            '<div class="empty-state"><i class="bi bi-cloud-slash"></i>WH65LP 날씨 데이터 없음</div>';
         return;
     }
 
-    const MAX  = 600;
+    const MAX  = 1000;
     const step = Math.max(1, Math.floor(wxRows.length / MAX));
     const rows = wxRows.filter((_,i) => i % step === 0);
 
@@ -566,26 +665,24 @@ function renderEnvWeatherChart(wxRows) {
     charts.envWx = new Chart(ctx.getContext('2d'), {
         type: 'line',
         data: { labels, datasets: [
-            { label:'외기 온도 (°C)', data:temps,
-              borderColor:'#f44336', backgroundColor:'transparent',
+            { label: state.simulationMode ? '외기 온도 (°C) [시뮬]' : '외기 온도 (°C)',
+              data:temps, borderColor:'#f44336', backgroundColor:'transparent',
               borderWidth:1.5, pointRadius:0, tension:0.3, spanGaps:true, yAxisID:'yTemp' },
-            { label:'외기 습도 (%)', data:hums,
-              borderColor:'#2196f3', backgroundColor:'transparent',
-              borderWidth:1.5, pointRadius:0, tension:0.3, spanGaps:true, yAxisID:'yHum',
-              borderDash:[4,2] },
-            { label:'UV 지수', data:uvIdx,
-              borderColor:'#ff9800', backgroundColor:'transparent',
+            { label: state.simulationMode ? '외기 습도 (%) [시뮬]' : '외기 습도 (%)',
+              data:hums, borderColor:'#2196f3', backgroundColor:'transparent',
+              borderWidth:1.5, pointRadius:0, tension:0.3, spanGaps:true, yAxisID:'yHum', borderDash:[4,2] },
+            { label:'UV 지수', data:uvIdx, borderColor:'#ff9800', backgroundColor:'transparent',
               borderWidth:1.5, pointRadius:0, tension:0.3, spanGaps:true, yAxisID:'yUV' },
-            { label:'강수량 (mm)', data:rain,
-              borderColor:'#00bcd4', backgroundColor:'rgba(0,188,212,0.15)',
-              borderWidth:1, pointRadius:0, tension:0.1, spanGaps:true, fill:true, yAxisID:'yRain' }
+            { label:'강수량 (mm)', data:rain, borderColor:'#00bcd4',
+              backgroundColor:'rgba(0,188,212,0.15)', borderWidth:1, pointRadius:0,
+              tension:0.1, spanGaps:true, fill:true, yAxisID:'yRain' }
         ]},
         options: {
             responsive: true,
             interaction: { mode:'index', intersect:false },
             plugins: { legend:{ position:'top' }, zoom: zoomPlugin('x') },
             scales: {
-                x: { ticks:{ maxTicksLimit:10, font:{size:11}, maxRotation:30 }, grid:{color:'#f0f0f0'} },
+                x:     { ticks:{ maxTicksLimit:10, font:{size:11}, maxRotation:30 }, grid:{color:'#f0f0f0'} },
                 yTemp: { position:'left',  ticks:{ callback:v=>v+'°C', font:{size:10} }, grid:{color:'#f0f0f0'} },
                 yHum:  { position:'right', ticks:{ callback:v=>v+'%',  font:{size:10} }, grid:{display:false} },
                 yUV:   { position:'right', display:false },
@@ -595,7 +692,7 @@ function renderEnvWeatherChart(wxRows) {
     });
 }
 
-/* 환경 요약 카드 업데이트 (히스토리 기반) */
+/* 환경 요약 카드 업데이트 */
 function updateEnvSummaryFromHistory(airRows, wxRows) {
     const validAir = airRows.filter(r => r.valid == 1 || r.valid === true);
     if (validAir.length) {
@@ -642,6 +739,24 @@ function downloadIrrCSV() {
     if (p.length) url += '?' + p.join('&');
     triggerDownload(url);
 }
+/** ★ SHT30 공기 데이터 CSV 다운로드 */
+function downloadAirCSV() {
+    let url = '/api/download/air-data';
+    const p = [];
+    if (state.fromDate) p.push('from=' + encodeURIComponent(state.fromDate));
+    if (state.toDate)   p.push('to='   + encodeURIComponent(state.toDate));
+    if (p.length) url += '?' + p.join('&');
+    triggerDownload(url);
+}
+/** ★ WH65LP 날씨 데이터 CSV 다운로드 */
+function downloadWeatherCSV() {
+    let url = '/api/download/weather-data';
+    const p = [];
+    if (state.fromDate) p.push('from=' + encodeURIComponent(state.fromDate));
+    if (state.toDate)   p.push('to='   + encodeURIComponent(state.toDate));
+    if (p.length) url += '?' + p.join('&');
+    triggerDownload(url);
+}
 function triggerDownload(url) {
     const a = document.createElement('a');
     a.href = url; a.download = '';
@@ -680,7 +795,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initDateDefaults();
     loadAll();
 
-    // 환경 탭 클릭 시 데이터 로드
     const envBtn = document.getElementById('tab-env-btn');
     if (envBtn) {
         envBtn.addEventListener('shown.bs.tab', () => {

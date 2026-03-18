@@ -317,10 +317,8 @@
                         <select id="log-zone-filter" class="form-select form-select-sm" style="width:120px;" onchange="renderLogTable()">
                             <option value="">전체 구역</option>
                         </select>
-                        <select id="log-trigger-filter" class="form-select form-select-sm" style="width:110px;" onchange="renderLogTable()">
+                        <select id="log-trigger-filter" class="form-select form-select-sm" style="width:120px;" onchange="renderLogTable()">
                             <option value="">전체 트리거</option>
-                            <option value="manual">수동</option>
-                            <option value="auto">자동</option>
                         </select>
                         <button class="btn btn-success btn-sm" onclick="downloadIrrCSV()"><i class="bi bi-download me-1"></i>CSV</button>
                     </div>
@@ -353,11 +351,25 @@
         <div class="tab-pane fade" id="tab-env">
 
 
-            <!-- Stage 14: SHT30 온도 시계열 차트 -->
+            
+        <!-- Stage 14b: 시뮬레이션 모드 배너 -->
+        <div id="sim-mode-banner" class="alert alert-warning d-flex align-items-center gap-2 mb-3" style="display:none!important;">
+            <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+            <div>
+                <strong>시뮬레이션 모드</strong> – 현재 표시되는 환경 데이터는
+                실제 센서(SHT30 / WH65LP) 값이 아닌 <strong>시뮬레이션 생성 데이터</strong>입니다.
+            </div>
+        </div>
+        <!-- Stage 14: SHT30 온도 시계열 차트 -->
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-thermometer-half text-danger"></i> <strong>SHT30 온도 추이 (구역 평균)</strong></span>
+                    <span>
+                        <i class="bi bi-thermometer-half text-danger"></i>
+                        <strong>SHT30 온도 추이 (구역 평균)</strong>
+                        <span id="sim-badge-air" class="badge bg-warning text-dark ms-2" style="display:none;">시뮬레이션</span>
+                    </span>
                     <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadAirCSV()"><i class="bi bi-download me-1"></i>SHT30 CSV</button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="if(charts.envTemp)charts.envTemp.resetZoom()"><i class="bi bi-zoom-out"></i> 줌 초기화</button>
                     </div>
                 </div>
@@ -388,8 +400,13 @@
             <!-- Stage 14: WH65LP 날씨 시계열 차트 -->
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-cloud-sun text-warning"></i> <strong>외부 날씨 추이 (WH65LP) — 기온/습도/UV/강수</strong></span>
+                    <span>
+                        <i class="bi bi-cloud-sun text-warning"></i>
+                        <strong>외부 날씨 추이 (WH65LP) — 기온/습도/UV/강수</strong>
+                        <span id="sim-badge-weather" class="badge bg-warning text-dark ms-2" style="display:none;">시뮬레이션</span>
+                    </span>
                     <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadWeatherCSV()"><i class="bi bi-download me-1"></i>날씨 CSV</button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="if(charts.envWx)charts.envWx.resetZoom()"><i class="bi bi-zoom-out"></i> 줌 초기화</button>
                     </div>
                 </div>
