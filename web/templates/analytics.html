@@ -352,6 +352,55 @@
         <!-- 환경 데이터 탭 (Stage 10) -->
         <div class="tab-pane fade" id="tab-env">
 
+
+            <!-- Stage 14: SHT30 온도 시계열 차트 -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-thermometer-half text-danger"></i> <strong>SHT30 온도 추이 (구역 평균)</strong></span>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="if(charts.envTemp)charts.envTemp.resetZoom()"><i class="bi bi-zoom-out"></i> 줌 초기화</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-wrap">
+                        <canvas id="env-temp-chart" height="80"></canvas>
+                    </div>
+                    <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>휠: 줌 &nbsp;|&nbsp; 드래그: 이동</p>
+                </div>
+            </div>
+
+            <!-- Stage 14: SHT30 습도 시계열 차트 -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-droplet-half text-primary"></i> <strong>SHT30 습도 추이 (구역 평균)</strong></span>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="if(charts.envHum)charts.envHum.resetZoom()"><i class="bi bi-zoom-out"></i> 줌 초기화</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-wrap">
+                        <canvas id="env-hum-chart" height="80"></canvas>
+                    </div>
+                    <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>휠: 줌 &nbsp;|&nbsp; 드래그: 이동</p>
+                </div>
+            </div>
+
+            <!-- Stage 14: WH65LP 날씨 시계열 차트 -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-cloud-sun text-warning"></i> <strong>외부 날씨 추이 (WH65LP) — 기온/습도/UV/강수</strong></span>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="if(charts.envWx)charts.envWx.resetZoom()"><i class="bi bi-zoom-out"></i> 줌 초기화</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-wrap">
+                        <canvas id="env-weather-chart" height="90"></canvas>
+                    </div>
+                    <p class="zoom-hint"><i class="bi bi-mouse2 me-1"></i>휠: 줌 &nbsp;|&nbsp; 드래그: 이동</p>
+                </div>
+            </div>
+
             <!-- 요약 카드 -->
             <div class="row g-3 mb-3">
                 <div class="col-6 col-md-3">

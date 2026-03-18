@@ -1,3 +1,34 @@
+## v0.6.3 — Stage 14: BUG-18 수정 + 환경 데이터 시계열 차트 (2026-03-17)
+
+### 🐛 BUG-18 수정: 관수 이력 렌더링 컬럼명 불일치
+
+`analytics.js`가 SQLite `irrigation_history` 테이블의 실제 컬럼명과 다른 키를 참조하여
+관수 트리거 비율·원시 로그·구역별 성공률이 전혀 표시되지 않는 문제 수정.
+
+| 잘못된 참조 | 수정 후 | 비고 |
+|---|---|---|
+| `r.trigger` | `r.trigger_type \|\| r.trigger` | CSV 폴백 호환 유지 |
+| `r.success` | `r.status` (SQLite) / `r.success` (CSV) | 이중 체크 |
+| `r.moisture_before` | `r.water_before \|\| r.moisture_before` | CSV 폴백 호환 유지 |
+
+### ✨ 환경 데이터 시계열 차트 추가 (Stage 14 신규)
+
+`analytics.html` 환경 탭에 Chart.js 시계열 차트 3종 추가:
+- **SHT30 온도 추이** — 12구역 유효 센서 평균, 줌/팬 지원
+- **SHT30 습도 추이** — 12구역 유효 센서 평균, 줌/팬 지원
+- **WH65LP 날씨 추이** — 외기 온도/습도/UV/강수량 4축 복합 차트
+
+`analytics.js`에 `loadEnvData()` 함수 추가:
+- `/api/analytics/environment?from=...&to=...` 날짜 범위 필터 적용
+- 환경 탭 클릭(`shown.bs.tab`) 시 자동 로드
+- 시뮬레이션 모드(데이터 없음) 시 빈 상태 안내 메시지 표시
+
+### 📄 변경 파일
+- `web/static/js/analytics.js` — BUG-18 수정 + 환경 차트 함수 추가
+- `web/templates/analytics.html` — 환경 탭 차트 캔버스 3개 추가
+
+---
+
 ## v0.6.2 — Stage 13: 설정 통합 (2026-03-17)
 
 ### 🔧 개선 사항
