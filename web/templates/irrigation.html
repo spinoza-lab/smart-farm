@@ -23,9 +23,7 @@
         .card-header{background-color:#f8f9fa;border-bottom:2px solid #667eea;font-size:var(--font-size-title);font-weight:bold;}
         .nav-tabs .nav-link{font-size:var(--font-size-base);padding:15px 25px;font-weight:600;}
         .nav-tabs .nav-link.active{background-color:#667eea;color:white;}
-        .font-size-controls{position:fixed;top:70px;right:20px;z-index:1000;display:flex;gap:8px;background:white;padding:8px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.2);}
-        .btn-font-size{width:55px;height:55px;padding:0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;}
-        @media(max-width:768px){.font-size-controls{top:auto;bottom:20px;right:20px;}}
+        @media(max-width:768px){}
         .zone-card{height:100%;transition:transform 0.15s,box-shadow 0.15s;}
         .zone-card:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,0.12);}
         .zone-card .card-header{padding:8px 12px;font-size:var(--font-size-small);}
@@ -64,23 +62,31 @@
     </style>
 </head>
 <body>
-<nav class="navbar navbar-dark">
-  <div class="container-fluid">
+<nav class="navbar navbar-dark navbar-expand-lg">
+  <div class="container-xxl">
     <a class="navbar-brand" href="/"><i class="bi bi-droplet-fill"></i> 스마트 관수 시스템</a>
-    <div>
-      <a href="/" class="btn btn-light me-2"><i class="bi bi-speedometer2"></i> 대시보드</a>
-      <a href="/irrigation" class="btn btn-warning me-2"><i class="bi bi-water"></i> 관수 제어</a>
-      <a href="/analytics" class="btn btn-info me-2"><i class="bi bi-bar-chart-line"></i> 분석</a>
-            <a href="/settings" class="btn btn-outline-light"><i class="bi bi-gear-fill"></i> 설정</a>
+
+    <button class="navbar-toggler" type="button"
+            data-bs-toggle="collapse" data-bs-target="#mainNavbar"
+            aria-controls="mainNavbar" aria-expanded="false" aria-label="메뉴 열기">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="mainNavbar">
+      <div class="navbar-nav ms-auto d-flex flex-row flex-wrap gap-1 align-items-center py-1">
+        <a href="/" class="btn btn-light btn-sm"><i class="bi bi-speedometer2"></i><span class="d-none d-lg-inline"> 대시보드</span></a>
+        <a href="/irrigation" class="btn btn-warning btn-sm"><i class="bi bi-water"></i><span class="d-none d-lg-inline"> 관수 제어</span></a>
+        <a href="/analytics" class="btn btn-info btn-sm"><i class="bi bi-bar-chart-line"></i><span class="d-none d-lg-inline"> 분석</span></a>
+        <a href="/settings" class="btn btn-outline-light btn-sm"><i class="bi bi-gear-fill"></i><span class="d-none d-lg-inline"> 설정</span></a>
+        <div class="d-flex align-items-center ms-1 gap-1 font-ctrl-nav" title="글자 크기">
+          <button class="btn btn-sm btn-outline-light px-2 lh-1" onclick="decreaseFontSize()" title="글자 작게" style="font-size:12px;">A<sup>-</sup></button>
+          <button class="btn btn-sm btn-outline-light px-2 lh-1" onclick="resetFontSize()"    title="기본 크기" style="font-size:12px;">A</button>
+          <button class="btn btn-sm btn-outline-light px-2 lh-1" onclick="increaseFontSize()" title="글자 크게" style="font-size:12px;">A<sup>+</sup></button>
+        </div>
+      </div>
     </div>
   </div>
-</nav>
-<div class="font-size-controls">
-  <button class="btn btn-outline-secondary btn-font-size" onclick="decreaseFontSize()"><i class="bi bi-dash-lg"></i></button>
-  <button class="btn btn-primary btn-font-size" onclick="resetFontSize()"><i class="bi bi-circle-fill"></i></button>
-  <button class="btn btn-outline-secondary btn-font-size" onclick="increaseFontSize()"><i class="bi bi-plus-lg"></i></button>
-</div>
-<div class="container-fluid mt-4">
+</nav><div class="container-xxl mt-4">
   <h1 class="mb-4"><i class="bi bi-water"></i> 관수 제어</h1>
   <ul class="nav nav-tabs mb-4" id="irrigationTabs" role="tablist">
     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#control" type="button"><i class="bi bi-toggles"></i> 제어 패널</button></li>

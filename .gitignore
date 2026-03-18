@@ -80,3 +80,4 @@ scripts/add_telegram_commands.sh
 scripts/fix_restart_loop.sh
 scripts/fix_system_tab.sh
 scripts/fix_system_tab2.sh
+*.bak*

@@ -197,44 +197,53 @@
 <body>
 
     <!-- 네비게이션 바 -->
-    <nav class="navbar navbar-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <i class="bi bi-droplet-fill"></i> 스마트 관수 시스템
-            </a>
-            <div>
-                <a href="/" class="btn btn-light me-2">
-                    <i class="bi bi-speedometer2"></i> 대시보드
-                </a>
-                <a href="/irrigation" class="btn btn-warning me-2">
-                    <i class="bi bi-water"></i> 관수 제어
-                </a>
-                <a href="/analytics" class="btn btn-info me-2"><i class="bi bi-bar-chart-line"></i> 분석</a>
+    <nav class="navbar navbar-dark navbar-expand-lg">
+    <div class="container-xxl">
+        <a class="navbar-brand" href="/">
+            <i class="bi bi-droplet-fill"></i> 스마트 관수 시스템
+        </a>
 
-                <a href="/settings" class="btn btn-outline-light">
-                    <i class="bi bi-gear-fill"></i> 설정
+        <!-- 모바일 햄버거 토글 -->
+        <button class="navbar-toggler" type="button"
+                data-bs-toggle="collapse" data-bs-target="#mainNavbar"
+                aria-controls="mainNavbar" aria-expanded="false" aria-label="메뉴 열기">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="mainNavbar">
+            <div class="navbar-nav ms-auto d-flex flex-row flex-wrap gap-1 align-items-center py-1">
+                <a href="/" class="btn btn-light btn-sm">
+                    <i class="bi bi-speedometer2"></i>
+                    <span class="d-none d-lg-inline"> 대시보드</span>
                 </a>
+                <a href="/irrigation" class="btn btn-warning btn-sm">
+                    <i class="bi bi-water"></i>
+                    <span class="d-none d-lg-inline"> 관수 제어</span>
+                </a>
+                <a href="/analytics" class="btn btn-info btn-sm">
+                    <i class="bi bi-bar-chart-line"></i>
+                    <span class="d-none d-lg-inline"> 분석</span>
+                </a>
+                <a href="/settings" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-gear-fill"></i>
+                    <span class="d-none d-lg-inline"> 설정</span>
+                </a>
+                <div class="d-flex align-items-center ms-1 gap-1 font-ctrl-nav" title="글자 크기">
+                    <button class="btn btn-sm btn-outline-light px-2 lh-1" onclick="decreaseFontSize()" title="글자 작게" style="font-size:12px;">A<sup>-</sup></button>
+                    <button class="btn btn-sm btn-outline-light px-2 lh-1" onclick="resetFontSize()"    title="기본 크기" style="font-size:12px;">A</button>
+                    <button class="btn btn-sm btn-outline-light px-2 lh-1" onclick="increaseFontSize()" title="글자 크게" style="font-size:12px;">A<sup>+</sup></button>
+                </div>
             </div>
         </div>
-    </nav>
+    </div>
+</nav>
 
     <!-- 폰트 크기 조절 버튼 -->
-    <div class="font-size-controls">
-        <button class="btn btn-outline-secondary btn-font-size" onclick="decreaseFontSize()" title="작게">
-            <i class="bi bi-dash-lg"></i>
-        </button>
-        <button class="btn btn-primary btn-font-size" onclick="resetFontSize()" title="보통">
-            <i class="bi bi-circle-fill"></i>
-        </button>
-        <button class="btn btn-outline-secondary btn-font-size" onclick="increaseFontSize()" title="크게">
-            <i class="bi bi-plus-lg"></i>
-        </button>
-    </div>
-        <div class="mt-2">
+            <div class="mt-2">
             
     </div>
 
-    <div class="container-fluid mt-4">
+    <div class="container-xxl mt-4">
         <h1 class="mb-4"><i class="bi bi-gear-fill"></i> 시스템 설정</h1>
 
         <!-- 탭 메뉴 -->
