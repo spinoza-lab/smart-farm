@@ -1,35 +1,57 @@
-## v0.6.3 — Stage 14: BUG-18 수정 + 환경 데이터 시계열 차트 (2026-03-17)
+## [v0.6.8] – 2026-03-18
 
-### 🐛 BUG-18 수정: 관수 이력 렌더링 컬럼명 불일치
+### 📱 Stage 14f: PC 중앙정렬 + 모바일 반응형 네비바
 
-`analytics.js`가 SQLite `irrigation_history` 테이블의 실제 컬럼명과 다른 키를 참조하여
-관수 트리거 비율·원시 로그·구역별 성공률이 전혀 표시되지 않는 문제 수정.
+#### PC 레이아웃 개선 (container-xxl)
+- **원인**: 넓은 모니터(≥1400px)에서 전체 너비 레이아웃으로 인해 가독성 저하.
+- **수정**: 4개 템플릿의 `container-fluid` → `container-xxl` 교체 (최대 1400px 너비 + 자동 중앙정렬).
+- **효과**: 분석 페이지 수준의 중앙정렬 레이아웃이 전 페이지에 적용됨.
 
-| 잘못된 참조 | 수정 후 | 비고 |
-|---|---|---|
-| `r.trigger` | `r.trigger_type \|\| r.trigger` | CSV 폴백 호환 유지 |
-| `r.success` | `r.status` (SQLite) / `r.success` (CSV) | 이중 체크 |
-| `r.moisture_before` | `r.water_before \|\| r.moisture_before` | CSV 폴백 호환 유지 |
+#### 모바일 햄버거 메뉴 네비바
+- **원인**: 7개 버튼 나열 네비바가 소형 화면에서 줄바꿈·비정렬 현상 발생.
+- **수정**:
+  - `sm` 이하(576px 미만): ☰ 햄버거 버튼만 표시 → 클릭 시 드롭다운 메뉴 전개
+  - `sm`~`md`(576~768px): 아이콘만 표시 (텍스트 숨김)
+  - `md` 이상(768px+): 아이콘 + 텍스트 전체 표시
+- **구현**: Bootstrap 5 `navbar-toggler` + `collapse` + `d-none d-md-inline` 조합
 
-### ✨ 환경 데이터 시계열 차트 추가 (Stage 14 신규)
-
-`analytics.html` 환경 탭에 Chart.js 시계열 차트 3종 추가:
-- **SHT30 온도 추이** — 12구역 유효 센서 평균, 줌/팬 지원
-- **SHT30 습도 추이** — 12구역 유효 센서 평균, 줌/팬 지원
-- **WH65LP 날씨 추이** — 외기 온도/습도/UV/강수량 4축 복합 차트
-
-`analytics.js`에 `loadEnvData()` 함수 추가:
-- `/api/analytics/environment?from=...&to=...` 날짜 범위 필터 적용
-- 환경 탭 클릭(`shown.bs.tab`) 시 자동 로드
-- 시뮬레이션 모드(데이터 없음) 시 빈 상태 안내 메시지 표시
-
-### 📄 변경 파일
-- `web/static/js/analytics.js` — BUG-18 수정 + 환경 차트 함수 추가
-- `web/templates/analytics.html` — 환경 탭 차트 캔버스 3개 추가
+### 📁 변경 파일
+| 파일 | 변경 내용 |
+|------|-----------|
+| `web/templates/index.html` | container-xxl + 햄버거 네비바 |
+| `web/templates/analytics.html` | container-xxl + 햄버거 네비바 |
+| `web/templates/irrigation.html` | container-xxl + 햄버거 네비바 |
+| `web/templates/settings.html` | container-xxl + 햄버거 네비바 |
 
 ---
 
-## [v0.6.4] – 2026-03-18
+## [v0.6.6~v0.6.7] – 2026-03-18
+
+### 🔧 Stage 14d/14e: 네비바 폰트버튼 삽입
+
+#### 네비바 폰트 크기 조절 버튼
+- 분석 페이지(`analytics.html`)에만 있던 폰트 크기 조절 버튼(A- / A / A+)을 나머지 3개 페이지에 삽입.
+- `fix_navbar_remaining.py` 스크립트를 통한 자동 삽입; `irrigation.html`은 즉시 적용, `index.html`·`settings.html`은 패턴 미스매치로 후속 패치 적용.
+- `fix_navbar_index_settings.py`로 `</nav>` 앞 들여쓰기 패턴 수정 후 재적용.
+
+### 📁 변경 파일
+- `web/templates/index.html`
+- `web/templates/irrigation.html`
+- `web/templates/settings.html`
+
+---
+
+## [v0.6.5] – 2026-03-18
+
+### 🔧 Stage 14c: 코드 패치 묶음
+
+- `trigger_type` 이름 정합성 확인 (`schedule`/`scheduler` 혼용 해소)
+- analytics_bp 엔드포인트 안정성 개선
+- 기타 소규모 코드 품질 개선
+
+---
+
+## v0.6.4 — Stage 14b: 분석 그래프 기간 범위 수정 + 환경 시뮬레이션 뱃지 (2026-03-18)
 
 ### 🐛 버그 수정 (Stage 14b)
 
@@ -76,6 +98,39 @@
 | `web/blueprints/download_bp.py`  | air/weather CSV 엔드포인트 신규 |
 | `web/static/js/analytics.js`     | TRIGGER_MAP, 동적 도넛, 환경 CSV |
 | `web/templates/analytics.html`   | 시뮬 뱃지, CSV 버튼, 트리거 필터 |
+
+---
+
+## v0.6.3 — Stage 14: BUG-18 수정 + 환경 데이터 시계열 차트 (2026-03-17)
+
+### 🐛 BUG-18 수정: 관수 이력 렌더링 컬럼명 불일치
+
+`analytics.js`가 SQLite `irrigation_history` 테이블의 실제 컬럼명과 다른 키를 참조하여
+관수 트리거 비율·원시 로그·구역별 성공률이 전혀 표시되지 않는 문제 수정.
+
+| 잘못된 참조 | 수정 후 | 비고 |
+|---|---|---|
+| `r.trigger` | `r.trigger_type \|\| r.trigger` | CSV 폴백 호환 유지 |
+| `r.success` | `r.status` (SQLite) / `r.success` (CSV) | 이중 체크 |
+| `r.moisture_before` | `r.water_before \|\| r.moisture_before` | CSV 폴백 호환 유지 |
+
+### ✨ 환경 데이터 시계열 차트 추가 (Stage 14 신규)
+
+`analytics.html` 환경 탭에 Chart.js 시계열 차트 3종 추가:
+- **SHT30 온도 추이** — 12구역 유효 센서 평균, 줌/팬 지원
+- **SHT30 습도 추이** — 12구역 유효 센서 평균, 줌/팬 지원
+- **WH65LP 날씨 추이** — 외기 온도/습도/UV/강수량 4축 복합 차트
+
+`analytics.js`에 `loadEnvData()` 함수 추가:
+- `/api/analytics/environment?from=...&to=...` 날짜 범위 필터 적용
+- 환경 탭 클릭(`shown.bs.tab`) 시 자동 로드
+- 시뮬레이션 모드(데이터 없음) 시 빈 상태 안내 메시지 표시
+
+### 📄 변경 파일
+- `web/static/js/analytics.js` — BUG-18 수정 + 환경 차트 함수 추가
+- `web/templates/analytics.html` — 환경 탭 차트 캔버스 3개 추가
+
+---
 
 ## v0.6.2 — Stage 13: 설정 통합 (2026-03-17)
 
@@ -350,25 +405,5 @@
 | `web/templates/index.html` | 환경 모니터링 탭 추가 (기상 카드 6종 + SHT30 구역 그리드) |
 | `web/templates/analytics.html` | 환경 데이터 탭 추가 (요약 카드 4종 + 스냅샷 테이블 + 기상 배지) |
 | `web/static/js/dashboard.js` | 백그라운드 환경 API 폴링 추가 (60초 간격) |
-
-### 🔌 신규 API 엔드포인트
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/environment` | 전체 환경 데이터 (공기 + 기상) |
-| GET | `/api/environment/air` | 전체 SHT30 센서 데이터 |
-| GET | `/api/environment/air/<id>` | 특정 구역 SHT30 데이터 |
-| GET | `/api/environment/weather` | WH65LP 기상 데이터 |
-| GET | `/api/environment/history/air` | 대기 센서 이력 (최근 100 스냅샷) |
-| GET | `/api/environment/history/weather` | 기상 이력 (최근 100 스냅샷) |
-
-### 🖥️ UI 변경
-- **대시보드** (`index.html`): 탭 3개 → 4개, 환경 모니터링 탭 추가
-  - 기상 정보 패널: 온도/습도/풍속+돌풍/기압/강수량/UV+조도 카드
-  - 구역별 SHT30 그리드: 12구역 동적 카드 (오류 구역 빨간 테두리)
-  - 60초 자동 갱신, 탭 클릭 즉시 갱신, 시뮬레이션 배지 표시
-- **분석 페이지** (`analytics.html`): 탭 4개 → 5개, 환경 데이터 탭 추가
-  - 요약 카드: 평균 온도/습도, 외부 온도, UV 지수
-  - 구역별 스냅샷 테이블 (12구역 전체, 이상 구역 빨간 행)
-  - 현재 기상 배지 패널 (WH65LP 실시간)
 
 > ⚠️ 현재 `simulation_mode: true` 상태 — 실제 하드웨어 수령 후 `false`로 전환 예정

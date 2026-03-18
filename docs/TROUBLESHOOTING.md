@@ -107,7 +107,8 @@ cat > /home/pi/smart_farm/config/notifications.json << 'JSONEOF'
     "tank1_max": 90,
     "tank2_min": 20,
     "tank2_max": 90
-  }
+  },
+  "cooldown_seconds": 300
 }
 JSONEOF
 # 서비스 재시작
@@ -129,4 +130,97 @@ API 저장값: 초 단위 (×60 자동 변환)
 ```bash
 grep -n "precalculate_read_size" hardware/modbus_soil_sensor.py
 # SoilSensorManager._init_sensors() 공유 시리얼 블록에 4개 속성 설정 확인
+```
+
+## 분석 페이지 그래프에 데이터가 표시되지 않음 (v0.6.4 이전)
+
+**증상**: 날짜 범위 선택 후 그래프가 비거나, 30일 이상 기간 선택 시 일부 데이터만 표시.
+
+**원인**: `analytics_bp.py`의 limit 고정값(2000행)이 긴 기간의 데이터를 포괄하지 못함.
+
+**해결**: v0.6.4에서 기간 기반 동적 limit 계산으로 수정됨. 최신 버전으로 업데이트하거나
+`analytics_bp.py`의 query_* 함수 호출부에서 limit 파라미터를 제거하면 DB 전체 기간 쿼리됨.
+
+## 분석 페이지 트리거 도넛 차트가 비어 있음
+
+**증상**: 관수 분석 탭의 트리거 유형 비율 차트가 표시되지 않거나 일부만 표시.
+
+**원인**: 트리거 값이 DB에 한글(`수동`, `스케줄`)로 저장되어 있으나
+기존 JS 코드가 영문(`manual`, `schedule`)만 처리함.
+
+**해결**: v0.6.4의 TRIGGER_MAP 업데이트로 수정됨. 아래 명령으로 실제 DB 값 확인:
+
+```bash
+curl -s http://localhost:5000/api/analytics/trigger-stats | python3 -m json.tool
+```
+
+## 환경 차트에 시뮬레이션 데이터가 실제 데이터처럼 표시됨
+
+**증상**: SHT30/WH65LP 하드웨어 미연결 상태에서 환경 차트에 규칙적인 시뮬레이션 데이터 표시.
+
+**해결**: v0.6.4에서 시뮬레이션 뱃지 및 경고 배너 추가. 하드웨어 수령 후:
+
+```bash
+python3 -c "
+import json
+for f in ['config/air_sensors.json', 'config/weather_station.json']:
+    d = json.load(open(f))
+    d['simulation_mode'] = False
+    json.dump(d, open(f,'w'), indent=4, ensure_ascii=False)
+    print(f'✅ {f} → simulation_mode: false')
+"
+sudo systemctl restart smart-farm.service
+```
+
+## 웹 UI 네비게이션 버튼이 모바일에서 겹치거나 줄바꿈됨
+
+**증상**: 스마트폰에서 접속 시 상단 네비게이션 버튼들이 겹치거나 여러 줄로 표시됨.
+
+**해결**: v0.6.8에서 모바일 햄버거 메뉴로 교체됨. 최신 버전으로 업데이트 후 서비스 재시작:
+
+```bash
+cd ~/smart_farm
+git pull origin main
+sudo systemctl restart smart-farm.service
+```
+
+## PC 화면에서 UI가 좌우로 너무 넓게 표시됨
+
+**증상**: 넓은 모니터에서 카드/차트가 전체 너비로 펼쳐져 가독성이 낮음.
+
+**해결**: v0.6.8에서 `container-xxl` 적용으로 최대 1400px 중앙정렬. 최신 버전 업데이트 후
+캐시 강제 새로 고침 (Ctrl+Shift+R):
+
+```bash
+sudo systemctl restart smart-farm.service
+# 브라우저 강제 새로고침: Ctrl+Shift+R (Windows/Linux) 또는 Cmd+Shift+R (Mac)
+```
+
+## container 레이아웃 현황 확인
+
+```bash
+grep -n "container-fluid\|container-xxl" \
+  /home/pi/smart_farm/web/templates/index.html | head -10
+# 예상 출력:
+# 242:    <div class="container-xxl">
+# 284:    <div class="container-xxl mt-4">
+```
+
+## UART3/4 경로가 없음 (/dev/ttyAMA2, /dev/ttyAMA3)
+
+**증상**: SHT30 또는 WH65LP 연결 시 `/dev/ttyAMA2` 또는 `/dev/ttyAMA3` 없음 오류.
+
+**해결**: `/boot/firmware/config.txt`에 UART 오버레이 추가 후 재부팅:
+
+```bash
+sudo nano /boot/firmware/config.txt
+# 파일 끝에 추가:
+# dtoverlay=uart3   # GPIO4(TX), GPIO5(RX) → MAX485 #2 대기 온습도
+# dtoverlay=uart4   # GPIO8(TX), GPIO9(RX) → MAX485 #3 기상 스테이션
+
+sudo reboot
+
+# 재부팅 후 확인
+ls -la /dev/ttyAMA*
+# /dev/ttyAMA0, /dev/ttyAMA2, /dev/ttyAMA3 모두 표시되어야 함
 ```
