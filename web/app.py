@@ -173,16 +173,20 @@ def init_monitoring_system():
             _t2_min = float(_thr.get('tank2_min', 20.0)); _t2_max = float(_thr.get('tank2_max', 90.0))
             _cooldown = int(_nc.get('cooldown_seconds', 300))
             _cooldown_sm = int(_nc.get('sensor_monitor_cooldown', 300))  # BUG-18: SM 쿨다운
+            _svt = _nc.get('sensor_voltage_thresholds', {})              # A: 센서 전압 임계값
+            _vol_min = float(_svt.get('min', 0.1)); _vol_max = float(_svt.get('max', 3.2))
         except Exception as e:
             print(f'[Init] thresholds 로드 실패: {e}')
             _t1_min=_t2_min=20.0; _t1_max=_t2_max=90.0; _cooldown=300; _cooldown_sm=300
+            _vol_min=0.1; _vol_max=3.2
         g.sensor_monitor = SensorMonitor(config={
             'check_interval': 10, 'sample_count': 10,
             'outlier_remove': 2, 'min_water_level': 20.0, 'max_water_level': 90.0,
             'alert_cooldown': _cooldown_sm  # BUG-18: notifications.json에서 읽기
         })
         g.alert_manager = AlertManager(tank1_min=_t1_min, tank1_max=_t1_max, tank2_min=_t2_min, tank2_max=_t2_max,
-                                        cooldown_seconds=_cooldown, log_file=str(_BASE_DIR/'logs/alerts.log'), db_manager=g.db_manager)
+                                        cooldown_seconds=_cooldown, log_file=str(_BASE_DIR/'logs/alerts.log'), db_manager=g.db_manager,
+                                        vol_min=_vol_min, vol_max=_vol_max)
         def alert_callback(alert):
             socketio.emit('new_alert', {'timestamp':alert.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
                 'level':alert.level.value,'type':alert.alert_type.value,'message':alert.message,

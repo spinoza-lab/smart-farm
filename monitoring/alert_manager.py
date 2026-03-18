@@ -93,7 +93,9 @@ class AlertManager:
                  tank2_max: float = 90.0,
                  cooldown_seconds: int = 300,
                  log_file: Optional[str] = str(_BASE_DIR / 'logs/alerts.log'),
-                 db_manager=None):              # Stage 12: SQLite 연동
+                 db_manager=None,               # Stage 12: SQLite 연동
+                 vol_min: float = 0.1,           # 센서 정상 전압 하한
+                 vol_max: float = 3.2):          # 센서 정상 전압 상한
         # 수위 임계값
         self.thresholds = {
             1: {'min': tank1_min, 'max': tank1_max},
@@ -124,6 +126,10 @@ class AlertManager:
 
         # 스레드 안전성
         self._lock = threading.Lock()
+
+        # 센서 전압 임계값 (오류 판단 기준) — notifications.json에서 주입
+        self.vol_min = vol_min
+        self.vol_max = vol_max
 
         db_mode = "SQLite + CSV" if db_manager else "CSV only"
         print(f"✅ AlertManager 초기화 완료 ({db_mode})")
@@ -276,7 +282,7 @@ class AlertManager:
         - 정상 복구 감지 → INFO 알림 + 쿨다운 초기화
         """
         alert_key = f"sensor_error_ch{channel}"
-        is_error  = (voltage is None) or (voltage < 0.1 or voltage > 3.2)
+        is_error  = (voltage is None) or (voltage < self.vol_min or voltage > self.vol_max)
 
         if is_error:
             self.sensor_error_counts[channel] += 1
