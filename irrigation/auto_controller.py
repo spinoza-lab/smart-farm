@@ -36,10 +36,11 @@ class AutoIrrigationController:
     LOG_PATH    = str(_BASE_DIR / 'logs/irrigation.log')
     CSV_PATH    = str(_BASE_DIR / 'logs/irrigation_history.csv')
 
-    def __init__(self, sensor_manager=None, relay_controller=None, config_path=None):
+    def __init__(self, sensor_manager=None, relay_controller=None, config_path=None, db_manager=None):
         self.config_path      = config_path or self.CONFIG_PATH
         self.sensor_manager   = sensor_manager
         self.relay_controller = relay_controller
+        self.db_manager      = db_manager        # Stage 14c: SQLite 관수 이력 기록용
 
         # 상태
         self.mode            = 'manual'   # 'auto' | 'manual' | 'schedule'
