@@ -1,8 +1,8 @@
 # 🌱 스마트 관수 시스템 (Smart Irrigation System)
 
 > **Repository**: [spinoza-lab/smart-farm](https://github.com/spinoza-lab/smart-farm)
-> **최종 업데이트**: 2026-03-17
-> **버전**: v0.6.0
+> **최종 업데이트**: 2026-03-18
+> **버전**: v0.6.8
 
 라즈베리파이 기반 자동 관수 및 수위 모니터링 시스템
 
@@ -19,9 +19,9 @@
 - 🗓 **루틴 스케줄러** — 요일 기반(schedule) + N일 주기(routine) + 전체구역 일괄 실행
 - 🔒 **인터록 처리** — 동시 관수 방지, ±10분 grace window, 최대 1시간 대기
 - 🎛️ **관수 제어 웹 UI** — 구역별 게이지, 수동 관수, 임계값 설정, 진행 상태바
-- 📥 **CSV 데이터 다운로드** — 탱크 수위·관수 이력 기간별 내보내기
+- 📥 **CSV 데이터 다운로드** — 탱크 수위·관수 이력·환경 데이터 기간별 내보내기
 - 🔧 **systemd 자동 시작** — 부팅 시 자동 실행 및 로그 관리
-- 📊 **데이터 분석 페이지** — 탱크 수위 트렌드, 관수 효율, 구역별 통계 (Chart.js 줌/팬)
+- 📊 **데이터 분석 페이지** — 탱크 수위 트렌드, 관수 효율, 구역별 통계, 환경 시계열 차트 (Chart.js 줌/팬)
 - 🤖 **텔레그램 알림 봇** — 서버 시작·관수 시작/완료·수위 경고 자동 알림 + 인라인 키보드 원격 제어
 - 🛡️ **알림 설정 안정성** — notifications.json 손상 방지, 토큰 보호, 원자적 파일 저장
 - 🐕 **Watchdog 스레드** — periodic_data_sender 자동 재시작, 30초 내 복구
@@ -32,6 +32,7 @@
 - 🔋 **I2C 장애 내성** — 재시도 2회 + fallback + 연속 오류 단계별 알림
 - 🌡️ **대기 환경 모니터링** — SHT30 ×12 구역별 온·습도 + WH65LP 기상 관측소 (v0.5.0)
 - 🗄️ **SQLite 데이터베이스** — CSV → SQLite 마이그레이션, 인덱스 기반 고속 조회 (v0.6.0)
+- 📱 **반응형 UI** — PC 중앙정렬(container-xxl) + 모바일 햄버거 메뉴 (v0.6.8)
 
 ---
 
@@ -82,11 +83,13 @@ smart_farm/
 │   │   ├── irrigation_bp.py
 │   │   ├── analytics_bp.py        # SQLite 쿼리 우선 (v0.6.0)
 │   │   ├── notifications_bp.py
-│   │   ├── download_bp.py
+│   │   ├── download_bp.py         # air/weather CSV 다운로드 (v0.6.4)
 │   │   └── environment_bp.py      # 환경 API (v0.5.0)
-│   ├── templates/
+│   ├── templates/                 # 반응형 UI (container-xxl + 햄버거, v0.6.8)
 │   └── static/
 ├── config/
+│   ├── version.json               # 버전 중앙 관리 (v0.6.2)
+│   └── notifications.json         # cooldowns 섹션 추가 (v0.6.2)
 ├── data/
 │   ├── smart_farm.db              # SQLite DB (v0.6.0)
 │   ├── air_sensor_logs/           # SHT30 CSV 백업
@@ -124,7 +127,8 @@ smart_farm/
 sudo systemctl start smart-farm.service
 sudo systemctl status smart-farm.service
 journalctl -u smart-farm.service -f
-# http://192.168.0.111:5000
+# 로컬: http://192.168.0.111:5000
+# 외부: http://spinozadev.iptime.org:15000
 ```
 
 ---
@@ -138,12 +142,20 @@ journalctl -u smart-farm.service -f
 - [x] **Stage 9.1** — Blueprint 리팩터링 + I2C 장애 내성 (v0.4.1)
 - [x] **Stage 10** — 대기 환경 모니터링 SHT30×12 + WH65LP (v0.5.0)
 - [x] **Stage 11** — SQLite 마이그레이션 (v0.6.0)
+- [x] **Stage 13** — 설정 통합 (config/version.json + cooldowns) (v0.6.2)
+- [x] **Stage 14** — BUG-18 수정 + 환경 시계열 차트 (v0.6.3)
+- [x] **Stage 14b** — 분석 그래프 기간 범위 + 트리거 표시 + 환경 CSV (v0.6.4)
+- [x] **Stage 14c** — 코드 패치 묶음 (v0.6.5)
+- [x] **Stage 14d/14e** — 네비바 폰트버튼 삽입 (4개 템플릿) (v0.6.6~v0.6.7)
+- [x] **Stage 14f** — PC 중앙정렬(container-xxl) + 모바일 햄버거 네비바 (v0.6.8)
 
 ### ⏳ 예정된 작업
-- [ ] **버전 관리 개선** — `config/version.json` 도입, 버전 표기 전체 일원화
-- [ ] **분석 페이지 기간 조회 버그 수정** — SQLite 연동 후 date range 필터 오동작
-- [ ] **환경 데이터 시계열 차트** — 분석 페이지에 Air/Weather 기간별 그래프 추가
+- [ ] **쿨다운 설정 완전 단일화** — AlertManager/SensorMonitor/AutoController 쿨다운 단일 config 키 통합
+- [ ] **sensor_voltage_thresholds 외부화** — 0.1V/3.2V 하드코딩 → notifications.json으로 이동
+- [ ] **대시보드 센서 오류 UI 배지** — 채널별 오류 상태 시각화
 - [ ] **Stage 10 하드웨어 연결** — SHT30·WH65LP 수령 후 simulation_mode=false 전환
+- [ ] **alerts 테이블 연동** — AlertManager 알림 발생 시 SQLite alerts 테이블에 저장
+- [ ] **DB 자동 정리 스케줄러** — 오래된 데이터 자동 삭제/아카이브
 
 ---
 
@@ -154,7 +166,7 @@ journalctl -u smart-farm.service -f
 | **OS** | Raspberry Pi OS (Bookworm) |
 | **언어** | Python 3.11 |
 | **웹 프레임워크** | Flask 3.x + Flask-SocketIO + Blueprint |
-| **프론트엔드** | Vanilla JS + Chart.js |
+| **프론트엔드** | Vanilla JS + Chart.js + Bootstrap 5 |
 | **통신** | I2C (400 kHz), RS-485 Modbus RTU |
 | **알림** | Telegram Bot API |
 | **저장** | SQLite (주) + CSV (백업) |
